@@ -122,6 +122,13 @@ MIT
 
 ## 📦 Install
 
+Download from [Releases](https://github.com/henryborner/shuttle/releases):
+
+- **`shuttle.exe`** — Windows main program
+- **`shuttle_linux`** — Linux remote agent (deploy via TUI Servers page)
+
+Or build from source:
+
 ```powershell
 git clone https://github.com/henryborner/shuttle.git
 cd shuttle
