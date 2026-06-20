@@ -39,11 +39,13 @@ go build -o shuttle.exe ./cmd/shuttle/
 ## 🚀 快速开始
 
 ```powershell
-.\shuttle.exe init              # 生成配置
-.\shuttle.exe tui               # 启动 TUI
+.\shuttle.exe init              # 生成配置模板（可选，TUI 也能直接添加）
+.\shuttle.exe tui               # 启动 TUI → 映射/服务器页面直接添加
 .\shuttle.exe push web          # 一键同步
 .\shuttle.exe push --dry-run    # 模拟预览
 ```
+
+> 无需手动写配置：直接 `shuttle tui` 进入界面，在映射管理和服务器页面用 `A` 添加即可。
 
 ## 📁 配置文件
 
@@ -138,11 +140,13 @@ go build -o shuttle.exe ./cmd/shuttle/
 ## 🚀 Quick Start
 
 ```powershell
-.\shuttle.exe init
-.\shuttle.exe tui
-.\shuttle.exe push web
-.\shuttle.exe push --dry-run
+.\shuttle.exe init              # Generate config template (optional)
+.\shuttle.exe tui               # Launch TUI — add mappings & servers directly
+.\shuttle.exe push web          # Sync
+.\shuttle.exe push --dry-run    # Preview
 ```
+
+> No manual config needed: run `shuttle tui` and press `A` to add mappings and servers in the UI.
 
 ## 📄 License
 
