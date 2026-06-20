@@ -1,0 +1,37 @@
+# Shuttle 同步配置文件
+# 用法: shuttle push [任务名]
+
+version: "1.0"
+
+# 服务器连接配置
+servers:
+  - name: myserver
+    host: 192.168.1.100
+    port: 22
+    user: deploy
+    key_file: ~/.ssh/id_ed25519
+    # password: your_password  # 不推荐用密码
+
+# 同步任务列表
+tasks:
+  - name: web
+    source: E:\projects\website\dist\
+    target: myserver:/var/www/html/
+    options:
+      delete: true          # 删除远程多余文件
+      exclude:
+        - "*.tmp"
+        - ".DS_Store"
+      compress: false
+      checksum: false       # true: 用校验和对比; false: 用时间+大小
+
+  - name: api
+    source: E:\projects\api\
+    target: myserver:/opt/app/api/
+    options:
+      delete: false
+      exclude:
+        - ".git/"
+        - "*.log"
+        - "__pycache__/"
+      checksum: false

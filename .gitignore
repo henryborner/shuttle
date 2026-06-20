@@ -1,0 +1,16 @@
+# Binaries
+*.exe
+*.exe~
+shuttle_linux
+
+# Config (may contain keys)
+syncd.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
