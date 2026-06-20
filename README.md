@@ -23,7 +23,12 @@ shuttle tui               # 交互式终端面板
 
 ## 📦 安装
 
-从 [Releases](https://github.com/henryborner/shuttle/releases) 下载 `shuttle.exe`，或自行构建：
+从 [Releases](https://github.com/henryborner/shuttle/releases) 下载：
+
+- **`shuttle.exe`** — Windows 主程序，在你本地运行
+- **`shuttle_linux`** — Linux 远程 agent，部署到服务器（TUI 服务器页 → Enter 自动部署）
+
+或自行构建：
 
 ```powershell
 git clone https://github.com/henryborner/shuttle.git
