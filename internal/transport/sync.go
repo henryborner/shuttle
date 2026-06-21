@@ -195,41 +195,58 @@ func (p *progressReader) Read(b []byte) (int, error) {
 }
 
 // uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
+// 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
-	newData, err := os.ReadFile(info.Path)
-	if err != nil {
-		return 0, 0, fmt.Errorf("read local: %w", err)
+	// 并行读取本地新文件（I/O）和远端签名（网络）
+	type localResult struct {
+		data []byte
+		err  error
 	}
+	localDone := make(chan localResult, 1)
+	go func() {
+		d, e := os.ReadFile(info.Path)
+		localDone <- localResult{d, e}
+	}()
 
 	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
+		<-localDone
 		return 0, 0, e.uploadFile(info, remotePath)
 	}
 
-	// 并发读 stderr，读完自动清理 session
+	// 并发读 stderr
 	var errBuf strings.Builder
 	stderrDone := make(chan struct{})
 	go func() {
 		io.Copy(&errBuf, stderr)
-		stderr.Close() // 触发 session.Wait() + session.Close()
+		stderr.Close()
 		close(stderrDone)
 	}()
 
-	// 1. 读取远端签名
+	// 接收远端签名
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {
 		stdin.Close()
+		<-localDone
 		<-stderrDone
 		return 0, 0, e.uploadFile(info, remotePath)
 	}
 
-	// 2. 本地匹配
+	// 等待本地文件读完
+	lr := <-localDone
+	if lr.err != nil {
+		stdin.Close()
+		<-stderrDone
+		return 0, 0, fmt.Errorf("read local: %w", lr.err)
+	}
+
+	// 本地匹配（文件数据+签名已就绪）
 	algo := delta.GetDefault()
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
-	insts := eng.Search(newData)
+	insts := eng.Search(lr.data)
 
 	// 3. 发送指令到远端（stdin 必须还活着）
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
@@ -246,7 +263,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
 
-	savedBytes = int64(len(newData)) - eng.LiteralBytes
+	savedBytes = int64(len(lr.data)) - eng.LiteralBytes
 	return eng.LiteralBytes, savedBytes, nil
 }
 

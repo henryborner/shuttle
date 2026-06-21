@@ -1,5 +1,3 @@
-
-
 package delta
 
 import (
@@ -18,7 +16,6 @@ type BlockSum struct {
 	Length int32  // 块长
 }
 
-
 type MatchResult struct {
 	IsLiteral bool   // true = 文字数据, false = 块引
 	Data      []byte // 文字数据 (IsLiteral=true)
@@ -26,13 +23,11 @@ type MatchResult struct {
 	Offset    int64  // 来源中的偏移（用于排序）
 }
 
-
 type Signature struct {
 	BlockSize int32      // 块大
 	BlockSums []BlockSum // 所有块的校验和
 	FileSize  int64      // 文件原始大小
 }
-
 
 const hashTableSize = 1 << 16
 
@@ -59,7 +54,6 @@ type MatchEngine struct {
 
 // NewMatchEngine 创建匹配引擎
 
-
 func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
@@ -71,12 +65,10 @@ func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
 	}
 }
 
-
 func (me *MatchEngine) LoadSignature(sig *Signature) {
 	me.checksums = sig.BlockSums
 	me.buildHashTable()
 }
-
 
 func (me *MatchEngine) buildHashTable() {
 
@@ -93,7 +85,6 @@ func (me *MatchEngine) buildHashTable() {
 			length: cs.Length,
 		})
 	}
-
 
 	for i := range me.hashTable {
 		if len(me.hashTable[i]) > 1 {
@@ -130,7 +121,6 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		if len(bucket) > 0 {
 			me.HashHits++
 
-
 			for _, entry := range bucket {
 				if entry.sum1 != rs.Value() {
 					continue
@@ -143,7 +133,6 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 					continue
 				}
 
-
 				matchIdx := entry.idx
 				if matchIdx != wantIdx && wantIdx < len(me.checksums) {
 					wantEntry := me.checksums[wantIdx]
@@ -153,7 +142,6 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 					}
 				}
 				wantIdx = matchIdx + 1
-
 
 				if offset > lastMatch {
 					results = append(results, MatchResult{
@@ -273,7 +261,6 @@ func strongSum(hashFunc func() hash.Hash, data []byte) []byte {
 	h.Write(data)
 	return h.Sum(nil)
 }
-
 
 func CalculateBlockSize(fileSize int64) int32 {
 	switch {
