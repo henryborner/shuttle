@@ -281,30 +281,55 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.read_err"), err)}
 		}
 
-		s, err := client.NewSession()
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf("Session: %v", err)}
-		}
-		stdin, err := s.StdinPipe()
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.stdin_err"), err)}
-		}
-		s.Start("cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle")
-		stdin.Write(binData)
-		stdin.Close()
-		s.Wait()
-
-		v, err := client.NewSession()
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf("Verify: %v", err)}
-		}
-		out, err := v.Output("/usr/local/bin/shuttle version")
-		v.Close()
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf("Verify: %v", err)}
+		// Try default system path first, then home dir as non-root fallback
+		deployPaths := []struct {
+			path    string
+			cmd     string
+		}{
+			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
+			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
 		}
 
-		return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s", IconOK, i18n.T("srv.deployed"), string(out))}
+		var lastErr error
+		deployed := false
+		for _, dp := range deployPaths {
+			s, err := client.NewSession()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			stdin, err := s.StdinPipe()
+			if err != nil {
+				lastErr = err
+				s.Close()
+				continue
+			}
+			s.Start(dp.cmd)
+			stdin.Write(binData)
+			stdin.Close()
+			s.Wait()
+			s.Close()
+
+			// Verify
+			v, err := client.NewSession()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			out, err := v.Output(dp.path + " version")
+			v.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			deployed = true
+			return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), string(out), dp.path)}
+		}
+
+		if !deployed {
+			return deployResultMsg{ok: false, msg: fmt.Sprintf("%s: %v\n%s", i18n.T("srv.deploy_err"), lastErr, i18n.T("srv.manual_install"))}
+		}
+		return deployResultMsg{ok: false, msg: "unreachable"}
 	}
 }
 

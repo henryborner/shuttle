@@ -125,8 +125,7 @@ func init() {
 		"srv.session_err": "会话: %v",
 		"srv.os_err":      "系统: %v",
 		"srv.stdin_err":   "标准输入: %v",
-		"srv.deploy_err":  "部署: %v",
-		"srv.read_err":    "读取: %v",
+		"srv.deploy_err":  "部署: %v",		"srv.manual_install": "请手动: scp shuttle_linux user@host:~/ ; ssh host chmod +x ~/shuttle",		"srv.read_err":    "读取: %v",
 		"srv.verify_err":  "验证: %v",
 
 		// Settings
