@@ -12,10 +12,11 @@ import (
 // ── Model ───────────────────────────────────────────────────────────
 
 type mappingsModel struct {
-	cfg     *config.Config
-	cursor  int
-	cfgPath string
-	wizard  *mappingsWizard
+	cfg       *config.Config
+	cursor    int
+	cfgPath   string
+	wizard    *mappingsWizard
+	deleteIdx int // -1 = no confirm pending, >=0 = index to delete
 }
 
 func newMappings(cfg *config.Config, cfgPath string) *mappingsModel {
@@ -27,6 +28,26 @@ func (m *mappingsModel) Init() tea.Cmd { return nil }
 // ── Update ──────────────────────────────────────────────────────────
 
 func (m *mappingsModel) Update(msg tea.Msg) (mappingsModel, tea.Cmd) {
+	// Delete confirmation pending.
+	if m.deleteIdx >= 0 {
+		key, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return *m, nil
+		}
+		switch key.String() {
+		case "y":
+			if m.deleteIdx < len(m.cfg.Tasks) {
+				m.cfg.Tasks = append(m.cfg.Tasks[:m.deleteIdx], m.cfg.Tasks[m.deleteIdx+1:]...)
+				m.cursor = clamp(m.cursor, len(m.cfg.Tasks)-1)
+				m.saveConfig()
+			}
+			m.deleteIdx = -1
+		case "n", "esc":
+			m.deleteIdx = -1
+		}
+		return *m, nil
+	}
+
 	// Delegate to wizard when active.
 	if m.wizard != nil {
 		w, cmd := m.wizard.Update(msg)
@@ -64,9 +85,7 @@ func (m *mappingsModel) Update(msg tea.Msg) (mappingsModel, tea.Cmd) {
 		}
 	case "d":
 		if len(m.cfg.Tasks) > 0 && m.cursor < len(m.cfg.Tasks) {
-			m.cfg.Tasks = append(m.cfg.Tasks[:m.cursor], m.cfg.Tasks[m.cursor+1:]...)
-			m.cursor = clamp(m.cursor, len(m.cfg.Tasks)-1)
-			m.saveConfig()
+			m.deleteIdx = m.cursor
 		}
 	case "r":
 		if m.cursor < len(m.cfg.Tasks) {
@@ -82,6 +101,16 @@ func (m *mappingsModel) Update(msg tea.Msg) (mappingsModel, tea.Cmd) {
 func (m *mappingsModel) View(width, height int) string {
 	if m.wizard != nil {
 		return m.wizard.View(width, height)
+	}
+	if m.deleteIdx >= 0 {
+		taskName := m.cfg.Tasks[m.deleteIdx].Name
+		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
+			StyleTitle.Render("⚠ "+i18n.T("map.delete")),
+			StyleWarning.Render(i18n.T("map.delete_confirm")),
+			StyleWarning.Render(taskName),
+			StyleSuccess.Render(i18n.T("btn.yes")),
+			StyleMuted.Render(i18n.T("btn.cancel")))
+		return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 	}
 
 	title := StyleTitle.Render("📋 " + i18n.T("map.title"))

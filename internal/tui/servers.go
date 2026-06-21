@@ -45,6 +45,8 @@ type serversModel struct {
 	cfgPath string
 	adding  bool
 	editIdx int
+	// delete confirmation
+	deleteIdx int // -1 = no pending
 	// form
 	formHost, formUser, formKey, formPortStr string
 	formName                                 string
@@ -62,6 +64,26 @@ func newServers(cfg *config.Config, cfgPath string) *serversModel {
 func (m *serversModel) Init() tea.Cmd { return nil }
 
 func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
+	// Delete confirmation pending.
+	if m.deleteIdx >= 0 {
+		key, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return *m, nil
+		}
+		switch key.String() {
+		case "y":
+			if m.deleteIdx < len(m.servers) {
+				m.servers = append(m.servers[:m.deleteIdx], m.servers[m.deleteIdx+1:]...)
+				m.cursor = clamp(m.cursor, len(m.servers)-1)
+				m.saveConfig()
+			}
+			m.deleteIdx = -1
+		case "n", "esc":
+			m.deleteIdx = -1
+		}
+		return *m, nil
+	}
+
 	if m.adding {
 		return m.formUpdate(msg)
 	}
@@ -94,11 +116,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	case "d":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
-			m.servers = append(m.servers[:m.cursor], m.servers[m.cursor+1:]...)
-			if m.cursor >= len(m.servers) {
-				m.cursor = len(m.servers) - 1
-			}
-			m.saveConfig()
+			m.deleteIdx = m.cursor
 		}
 	}
 	return *m, nil
@@ -320,6 +338,16 @@ func (m *serversModel) backspaceField() {
 }
 
 func (m *serversModel) View(width, height int) string {
+	if m.deleteIdx >= 0 && m.deleteIdx < len(m.servers) {
+		srvName := m.servers[m.deleteIdx].Name
+		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
+			StyleTitle.Render("⚠ "+i18n.T("srv.delete")),
+			StyleWarning.Render(i18n.T("map.delete_confirm")),
+			StyleWarning.Render(srvName),
+			StyleSuccess.Render(i18n.T("btn.yes")),
+			StyleMuted.Render(i18n.T("btn.cancel")))
+		return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
+	}
 	if m.adding {
 		return m.formView(width, height)
 	}

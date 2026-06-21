@@ -3,7 +3,6 @@ package util
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -53,29 +52,26 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 
 // CheckHostKey returns an ssh.HostKeyCallback that verifies the host key
 // against the user's ~/.ssh/known_hosts file. Unknown hosts are automatically
-// added (trust-on-first-use). Changed keys are rejected with an error.
+// added (trust-on-first-use). Changed keys are rejected.
+// If the known_hosts file cannot be read, connections are rejected (fail-secure).
 func CheckHostKey() ssh.HostKeyCallback {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		log.Printf("known_hosts: cannot find home dir, host key check disabled")
-		return ssh.InsecureIgnoreHostKey()
+		return hostKeyUnavailable("cannot find home directory")
 	}
 
 	khPath := filepath.Join(home, ".ssh", "known_hosts")
-	// Ensure the file exists (create empty if not)
 	if _, err := os.Stat(khPath); os.IsNotExist(err) {
 		f, err := os.OpenFile(khPath, os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
-			log.Printf("known_hosts: cannot create %s, host key check disabled", khPath)
-			return ssh.InsecureIgnoreHostKey()
+			return hostKeyUnavailable(fmt.Sprintf("cannot create %s", khPath))
 		}
 		f.Close()
 	}
 
 	baseCb, err := knownhosts.New(khPath)
 	if err != nil {
-		log.Printf("known_hosts: %v, host key check disabled", err)
-		return ssh.InsecureIgnoreHostKey()
+		return hostKeyUnavailable(fmt.Sprintf("cannot parse known_hosts: %v", err))
 	}
 
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
@@ -99,5 +95,13 @@ func CheckHostKey() ssh.HostKeyCallback {
 		}
 		// Key changed → reject
 		return fmt.Errorf("主机密钥不匹配! 可能是中间人攻击: %w", err)
+	}
+}
+
+// hostKeyUnavailable returns a callback that rejects all connections
+// with an error message explaining why host key verification is unavailable.
+func hostKeyUnavailable(reason string) ssh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		return fmt.Errorf("主机密钥验证不可用 (%s) — 拒绝连接以防中间人攻击", reason)
 	}
 }

@@ -119,8 +119,13 @@ tasks:
 func runTUI(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load("syncd.yaml")
 	if err != nil {
-		// 配置文件不存在时允许空配置进入 TUI
-		cfg = &config.Config{Version: "1.0"}
+		if os.IsNotExist(err) {
+			// 配置文件不存在时允许空配置进入 TUI
+			cfg = &config.Config{Version: "1.0"}
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ 配置加载失败: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	if err := tui.Run(cfg, "syncd.yaml"); err != nil {

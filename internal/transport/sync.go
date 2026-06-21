@@ -137,7 +137,12 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			found := false
 			for _, lf := range localFiles {
 				rp, _ := filepath.Rel(opts.Source, lf.Path)
-				if filepath.Base(rp) == name {
+				if rp == "." || rp == "" {
+					rp = filepath.Base(opts.Source)
+				} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
+					rp = filepath.Join(filepath.Base(opts.Source), rp)
+				}
+				if filepath.ToSlash(rp) == name {
 					found = true
 					break
 				}
@@ -193,7 +198,8 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		return 0, 0, fmt.Errorf("read local: %w", err)
 	}
 
-	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive %s", remotePath)
+	// shellQuote wraps a path in single quotes, escaping any embedded quotes.
+	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		return 0, 0, e.uploadFile(info, remotePath) // fallback

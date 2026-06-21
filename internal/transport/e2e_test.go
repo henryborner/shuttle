@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/henryborner/shuttle/internal/delta"
@@ -101,7 +102,7 @@ func doDelta(t *testing.T, client *ssh.Client, path string, newData []byte) (sen
 	stdin, _ := session.StdinPipe()
 	stdout, _ := session.StdoutPipe()
 	stderr, _ := session.StderrPipe()
-	session.Start("/usr/local/bin/shuttle receive " + path)
+	session.Start("/usr/local/bin/shuttle receive '" + strings.ReplaceAll(path, "'", "'\\''") + "'")
 
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {
