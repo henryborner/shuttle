@@ -9,8 +9,8 @@ syncd.yaml
 # IDE
 .idea/
 
-# Reference
-../rsync/
+# Reference (sibling dir, also exclude if accidentally cloned here)
+/rsync/
 .vscode/
 *.swp
 
