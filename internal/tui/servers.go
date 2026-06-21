@@ -172,6 +172,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "u":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.updateIdx = m.cursor
+		}
 	}
 	return *m, nil
 }
