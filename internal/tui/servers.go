@@ -1,4 +1,3 @@
-
 package tui
 
 import (
@@ -7,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/i18n"
@@ -259,28 +257,6 @@ func (m *serversModel) asyncDeploy(signer ssh.Signer) tea.Cmd {
 
 		return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s", IconOK, i18n.T("srv.deployed"), string(out))}
 	}
-}
-
-func expandPath(p string) string {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return p
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		return p
-	}
-
-	first, _ := utf8.DecodeRuneInString(p)
-	if first == '~' || first == 0xFF5E {
-		home, _ := os.UserHomeDir()
-		rest := p[utf8.RuneLen(first):]
-		// Split and join properly for Windows
-		rest = strings.TrimLeft(rest, "/\\")
-		parts := strings.FieldsFunc(rest, func(r rune) bool { return r == '/' || r == '\\' })
-		all := append([]string{home}, parts...)
-		return filepath.Join(all...)
-	}
-	return p
 }
 
 func (m *serversModel) saveServer() {
