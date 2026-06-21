@@ -107,7 +107,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-		m.syncChan = make(chan syncMsg, 100)
+	m.syncChan = make(chan syncMsg, 100)
 	return m.listenSync()
 }
 
@@ -174,11 +174,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		// Clear previous sync result on any key
-		if !m.syncing {
-			m.sp = syncProgress{}
-			m.syncErr = ""
-		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit

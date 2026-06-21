@@ -47,8 +47,8 @@ type serversModel struct {
 	editIdx int
 	// form
 	formHost, formUser, formKey, formPortStr string
-	formName                                  string
-	formField                                 int
+	formName                                 string
+	formField                                int
 	// test & deploy
 	testStatus testStatus
 	testMsg    string

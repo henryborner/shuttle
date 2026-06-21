@@ -13,13 +13,13 @@ import (
 )
 
 type SyncOptions struct {
-	Source    string
-	Target    string
-	Delete    bool
-	Exclude   []string
-	Checksum  bool
-	DryRun    bool
-	SkipDots  bool // skip files/dirs starting with "." (default true for safety)
+	Source   string
+	Target   string
+	Delete   bool
+	Exclude  []string
+	Checksum bool
+	DryRun   bool
+	SkipDots bool // skip files/dirs starting with "." (default true for safety)
 }
 
 type SyncStats struct {
