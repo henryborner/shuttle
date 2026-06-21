@@ -48,6 +48,7 @@ type serversModel struct {
 	editIdx int
 	// delete confirmation
 	deleteIdx int // -1 = no pending
+	updateIdx int // -1 = no pending
 	// form
 	formHost, formUser, formKey, formPortStr, formPass string
 	formName                                           string
@@ -60,12 +61,34 @@ type serversModel struct {
 }
 
 func newServers(cfg *config.Config, cfgPath string) *serversModel {
-	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPortStr: "22", deleteIdx: -1}
+	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPortStr: "22", deleteIdx: -1, updateIdx: -1}
 }
 
 func (m *serversModel) Init() tea.Cmd { return nil }
 
 func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
+	// Update confirmation pending.
+	if m.updateIdx >= 0 {
+		key, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return *m, nil
+		}
+		switch key.String() {
+		case "y", "enter":
+			if m.updateIdx < len(m.servers) {
+				srv := m.servers[m.updateIdx]
+				m.deployed = false
+				m.testMsg = i18n.T("srv.updating")
+				m.updateIdx = -1
+				return *m, asyncUpdateAgent(srv)
+			}
+			m.updateIdx = -1
+		case "n", "esc":
+			m.updateIdx = -1
+		}
+		return *m, nil
+	}
+
 	// Delete confirmation pending.
 	if m.deleteIdx >= 0 {
 		// Silently eat async deploy results during confirmation
@@ -148,11 +171,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	case "u":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
-			srv := m.servers[m.cursor]
-			m.deployed = false
-			m.testMsg = i18n.T("srv.updating")
-			return *m, asyncUpdateAgent(srv)
-		}
+			m.updateIdx = m.cursor
 	}
 	return *m, nil
 }
@@ -435,6 +454,16 @@ func (m *serversModel) backspaceField() {
 }
 
 func (m *serversModel) View(width, height int) string {
+	if m.updateIdx >= 0 && m.updateIdx < len(m.servers) {
+		srvName := m.servers[m.updateIdx].Name
+		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
+			StyleTitle.Render("⬆ "+i18n.T("srv.update_short")),
+			StyleWarning.Render("确认更新远端 agent？"),
+			StyleWarning.Render(srvName),
+			StyleSuccess.Render(i18n.T("btn.yes")),
+			StyleMuted.Render(i18n.T("btn.cancel")))
+		return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
+	}
 	if m.deleteIdx >= 0 && m.deleteIdx < len(m.servers) {
 		srvName := m.servers[m.deleteIdx].Name
 		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s\n  [D] %s\n  [N] %s",
