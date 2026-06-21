@@ -6,7 +6,7 @@ func init() {
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "增量文件同步工具",
-		"app.version":      " v0.1.2.4",
+		"app.version":      " v0.1.2.5",
 		"app.connected":    "已连接",
 		"app.disconnected": "未连接",
 
@@ -47,6 +47,8 @@ func init() {
 		"sync.connect_err":      "连接: %v",
 		"sync.local_fmt":        "本地: %s",
 		"sync.done_fmt":         "✅ %s 完成 | %d 文件 | %s%s",
+		"sync.delete_warn":      "⚠️ 此任务开启了「删除多余文件」！",
+		"sync.delete_confirm":   "远程多余的文件将被永久删除，确认同步？",
 
 		// Mappings
 		"map.title":          "映射管理",

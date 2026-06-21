@@ -57,8 +57,12 @@ func (m *dashboardModel) View(width, height int) string {
 			src := truncatePath(t.Source, 28)
 			dst := truncatePath(t.Target, 28)
 
-			body += fmt.Sprintf("  %s %-20s  %s → %s\n",
-				icon, t.Name, StyleMuted.Render(src), StyleMuted.Render(dst))
+			opts := ""
+			if t.Options.Delete {
+				opts += StyleDanger.Render(" ⚠DEL")
+			}
+			body += fmt.Sprintf("  %s %-20s  %s → %s%s\n",
+				icon, t.Name, StyleMuted.Render(src), StyleMuted.Render(dst), opts)
 		}
 		body += "\n" + StyleMuted.Render(fmt.Sprintf("  "+i18n.T("help.sync_hint"), len(tasks)))
 	}

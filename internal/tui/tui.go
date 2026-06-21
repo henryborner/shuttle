@@ -77,10 +77,11 @@ type Model struct {
 	explorer  *explorerModel
 
 	// Sync state
-	syncing  bool
-	sp       syncProgress
-	syncErr  string
-	syncChan chan syncMsg
+	syncing         bool
+	sp              syncProgress
+	syncErr         string
+	syncChan        chan syncMsg
+	syncPendingTask *config.Task // delete 确认待处理
 }
 
 func New(cfg *config.Config, cfgPath string) *Model {
@@ -122,8 +123,29 @@ func (m *Model) listenSync() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Delete 确认待处理 — 拦截所有按键
+	if m.syncPendingTask != nil {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "y":
+				task := *m.syncPendingTask
+				m.syncPendingTask = nil
+				m.startSync(task)
+				return m, nil
+			case "n", "esc", "ctrl+c":
+				m.syncPendingTask = nil
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+
 	// Handle startSyncMsg from any sub-model
 	if sm, ok := msg.(startSyncMsg); ok {
+		if sm.task.Options.Delete {
+			m.syncPendingTask = &sm.task
+			return m, nil
+		}
 		m.startSync(sm.task)
 		return m, nil
 	}
@@ -230,6 +252,20 @@ func (m *Model) dispatchUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	if m.width < 60 {
 		return i18n.T("term.small")
+	}
+
+	// Delete 确认对话框
+	if m.syncPendingTask != nil {
+		task := m.syncPendingTask
+		body := fmt.Sprintf("  %s\n\n  %s: %s\n  %s → %s\n\n  %s\n\n  [Y] %s  [N] %s",
+			StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
+			i18n.T("map.title"), StyleWarning.Render(task.Name),
+			StyleMuted.Render(truncatePath(task.Source, 35)),
+			StyleMuted.Render(truncatePath(task.Target, 35)),
+			StyleDanger.Render(i18n.T("sync.delete_confirm")),
+			StyleSuccess.Render(i18n.T("btn.yes")),
+			StyleMuted.Render(i18n.T("btn.cancel")))
+		return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
 	}
 
 	nav := RenderNav(pageNames(), int(m.activePage), m.width)

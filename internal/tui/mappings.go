@@ -125,7 +125,7 @@ func (m *mappingsModel) View(width, height int) string {
 			}
 			opts := ""
 			if t.Options.Delete {
-				opts += " Δdel"
+				opts += " " + StyleDanger.Render("⚠DEL")
 			}
 			if t.Options.Checksum {
 				opts += " ∑"

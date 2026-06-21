@@ -6,7 +6,7 @@ func init() {
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "Incremental File Sync",
-		"app.version":      " v0.1.2.4",
+		"app.version":      " v0.1.2.5",
 		"app.connected":    "Connected",
 		"app.disconnected": "Disconnected",
 
@@ -47,6 +47,8 @@ func init() {
 		"sync.connect_err":      "connect: %v",
 		"sync.local_fmt":        "local: %s",
 		"sync.done_fmt":         "✅ %s done | %d files | %s%s",
+		"sync.delete_warn":      "⚠️  Delete-extra-files is ON for this task!",
+		"sync.delete_confirm":   "Extra remote files will be permanently deleted. Continue?",
 
 		// Mappings
 		"map.title":          "Mappings",
