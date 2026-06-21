@@ -1,4 +1,3 @@
-
 // 允许用户注册自定义哈希算法，替换硬编码的 switch
 package delta
 
@@ -14,7 +13,6 @@ type ChecksumAlgo struct {
 	New    func() hash.Hash // 哈希构造函
 	Length int              // 输出字节
 }
-
 
 var (
 	registryMu  sync.RWMutex
@@ -46,14 +44,13 @@ func Register(algo ChecksumAlgo) {
 // GetAlgo 获取已注册的算法
 func GetAlgo(name string) (ChecksumAlgo, error) {
 	registryMu.RLock()
-	defer registryMu.RUnlock()
 	algo, ok := registry[name]
+	registryMu.RUnlock() // 必须在调用 ListAlgos() 前释放，避免死锁
 	if !ok {
-		return ChecksumAlgo{}, fmt.Errorf("未知的校验和算法: %s (已注 %v)", name, ListAlgos())
+		return ChecksumAlgo{}, fmt.Errorf("未知的校验和算法: %s (已注册: %v)", name, ListAlgos())
 	}
 	return algo, nil
 }
-
 
 func ListAlgos() []string {
 	registryMu.RLock()
@@ -83,7 +80,6 @@ func GetDefault() string {
 	return defaultAlgo
 }
 
-
 func MustGet(name string) ChecksumAlgo {
 	algo, err := GetAlgo(name)
 	if err != nil {
@@ -91,7 +87,6 @@ func MustGet(name string) ChecksumAlgo {
 	}
 	return algo
 }
-
 
 func NewHash(algoName string) (hash.Hash, error) {
 	algo, err := GetAlgo(algoName)

@@ -50,8 +50,12 @@ func runReceive(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// 5. 重建文件
-	recon := delta.NewReconstructor(oldData, blockSize, algo)
+	// 5. 重建文件（传入各块实际长度，避免尾块复制多余字节）
+	blockLens := make([]int32, len(sig.BlockSums))
+	for i, bs := range sig.BlockSums {
+		blockLens[i] = bs.Length
+	}
+	recon := delta.NewReconstructor(oldData, blockSize, algo, blockLens)
 	result, err := recon.Reconstruct(instructions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 重建失败: %v\n", err)

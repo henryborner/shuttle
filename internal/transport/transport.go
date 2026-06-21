@@ -218,7 +218,8 @@ func (t *SFTPTransport) Stat(path string) (FileInfo, error) {
 	}, nil
 }
 
-// Exec runs a command on the remote host via SSH
+// Exec runs a command on the remote host via SSH.
+// Callers MUST close both stdout and stderr to release the SSH session.
 func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	if t.sshCli == nil {
 		return nil, nil, nil, fmt.Errorf("not connected")
@@ -246,9 +247,20 @@ func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.
 		session.Close()
 		return nil, nil, nil, fmt.Errorf("start command failed: %w", err)
 	}
-	return stdin, readCloser{stdout}, readCloser{stderr}, nil
+	// Wrap stdout/stderr so closing either one waits on the session.
+	return stdin, &sessionReadCloser{Reader: stdout, session: session},
+		&sessionReadCloser{Reader: stderr, session: session}, nil
 }
 
-type readCloser struct{ io.Reader }
+// sessionReadCloser wraps an io.Reader and closes the SSH session on the first Close call.
+type sessionReadCloser struct {
+	io.Reader
+	session *ssh.Session
+	once    int32 // atomic guard for Close
+}
 
-func (readCloser) Close() error { return nil }
+func (s *sessionReadCloser) Close() error {
+	// Wait + Close the session; safe to call multiple times.
+	_ = s.session.Wait()
+	return s.session.Close()
+}

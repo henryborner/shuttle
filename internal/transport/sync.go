@@ -1,6 +1,3 @@
-
-
-
 package transport
 
 import (
@@ -59,7 +56,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	entries, err := e.transport.ListDir(opts.Target)
 	if err == nil {
 		for _, f := range entries {
-			remoteFiles[filepath.Base(f.Path)] = f
+			// 使用相对于 target 的路径作为 key，避免不同目录同名文件覆盖
+			key := strings.TrimPrefix(f.Path, opts.Target)
+			key = strings.TrimPrefix(key, "/")
+			remoteFiles[key] = f
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
@@ -73,7 +73,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			relPath = filepath.Join(filepath.Base(opts.Source), relPath)
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
-		rf, exists := remoteFiles[filepath.Base(remotePath)]
+		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
 		start := time.Now()
 		e.hook.OnFileStart(relPath, lf.Size)
 
@@ -186,8 +186,6 @@ func (p *progressReader) Read(b []byte) (int, error) {
 
 // uploadFileDelta rsync式增量传输：
 
-
-
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
 	newData, err := os.ReadFile(info.Path)
 	if err != nil {
@@ -201,6 +199,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	}
 
 	sig, err := delta.WireDecodeSignature(stdout)
+	stdout.Close() // release SSH session resources
 	if err != nil {
 		return info.Size, 0, fmt.Errorf("recv sig: %w", err)
 	}

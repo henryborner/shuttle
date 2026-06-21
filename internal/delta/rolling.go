@@ -1,14 +1,10 @@
-
-
 package delta
 
 const (
-
 	CHAR_OFFSET = 31
 	// MOD 模数
 	MOD = 1 << 16
 )
-
 
 type RollingSum struct {
 	count int32 // 窗口中的字节
@@ -16,13 +12,11 @@ type RollingSum struct {
 	s2    uint32
 }
 
-
 func NewRollingSum(data []byte) *RollingSum {
 	rs := &RollingSum{}
 	rs.Reset(data)
 	return rs
 }
-
 
 func (rs *RollingSum) Reset(data []byte) {
 	rs.count = int32(len(data))
@@ -48,16 +42,22 @@ func (rs *RollingSum) Reset(data []byte) {
 	rs.s2 = s2 & 0xFFFF
 }
 
-
-
+// Roll 滚动窗口：移除一个旧字节，加入一个新字节，更新 s1/s2。
+// 使用 int64 计算取模，避免 Go 中 uint32 下溢后取模结果错误。
 func (rs *RollingSum) Roll(oldByte, newByte byte, blockLen int32) {
 	old := uint32(oldByte) + CHAR_OFFSET
 	new := uint32(newByte) + CHAR_OFFSET
 
-	rs.s1 = (rs.s1 - old + new) % MOD
-	rs.s2 = (rs.s2 - uint32(blockLen)*old + rs.s1) % MOD
-}
+	s1 := int64(rs.s1) - int64(old) + int64(new)
+	s2 := int64(rs.s2) - int64(blockLen)*int64(old) + s1
 
+	// Go 的 % 对负数得负数，需要归一到 [0, MOD)
+	s1 = (s1%int64(MOD) + int64(MOD)) % int64(MOD)
+	s2 = (s2%int64(MOD) + int64(MOD)) % int64(MOD)
+
+	rs.s1 = uint32(s1)
+	rs.s2 = uint32(s2)
+}
 
 func (rs *RollingSum) Value() uint32 {
 	return rs.s1 + (rs.s2 << 16)
