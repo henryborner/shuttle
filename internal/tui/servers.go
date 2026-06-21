@@ -101,6 +101,12 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	if m.adding {
 		return m.formUpdate(msg)
 	}
+	// Also handle async deploy results from list view
+	if dr, ok := msg.(deployResultMsg); ok {
+		m.deployed = dr.ok
+		m.testMsg = dr.msg
+		return *m, nil
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return *m, nil
@@ -133,7 +139,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.deleteIdx = m.cursor
 		}
-	case "ctrl+u":
+	case "ctrl+p":
 		if m.cursor < len(m.servers) {
 			srv := m.servers[m.cursor]
 			authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
