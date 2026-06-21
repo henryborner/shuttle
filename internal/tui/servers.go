@@ -276,6 +276,10 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 		exePath, _ := os.Executable()
 		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
 		if _, err := os.Stat(localBin); os.IsNotExist(err) {
+			// go run 可能不在项目目录，fallback 当前工作目录
+			localBin = "shuttle_linux"
+		}
+		if _, err := os.Stat(localBin); os.IsNotExist(err) {
 			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
 		}
 		binData, err := os.ReadFile(localBin)
