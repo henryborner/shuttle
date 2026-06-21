@@ -78,6 +78,16 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 				m.saveConfig()
 			}
 			m.deleteIdx = -1
+		case "d":
+			if m.deleteIdx < len(m.servers) {
+				srv := m.servers[m.deleteIdx]
+				m.servers = append(m.servers[:m.deleteIdx], m.servers[m.deleteIdx+1:]...)
+				m.cursor = clamp(m.cursor, len(m.servers)-1)
+				m.saveConfig()
+				// 异步尝试连接远端删除 agent
+				go tryRemoveRemoteAgent(srv)
+			}
+			m.deleteIdx = -1
 		case "n", "esc":
 			m.deleteIdx = -1
 		}
@@ -351,11 +361,12 @@ func (m *serversModel) backspaceField() {
 func (m *serversModel) View(width, height int) string {
 	if m.deleteIdx >= 0 && m.deleteIdx < len(m.servers) {
 		srvName := m.servers[m.deleteIdx].Name
-		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
+		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s\n  [D] %s\n  [N] %s",
 			StyleTitle.Render("⚠ "+i18n.T("srv.delete")),
 			StyleWarning.Render(i18n.T("map.delete_confirm")),
 			StyleWarning.Render(srvName),
 			StyleSuccess.Render(i18n.T("btn.yes")),
+			StyleWarning.Render(i18n.T("srv.delete_agent")),
 			StyleMuted.Render(i18n.T("btn.cancel")))
 		return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 	}
@@ -430,4 +441,27 @@ func (m *serversModel) formView(width, height int) string {
 func (m *serversModel) saveConfig() {
 	m.cfg.Servers = m.servers
 	saveConfig(m.cfg, m.cfgPath)
+}
+
+// tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
+func tryRemoveRemoteAgent(srv config.Server) {
+	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
+	if len(authMethods) == 0 {
+		return
+	}
+	cfg := &ssh.ClientConfig{
+		User: srv.User, Auth: authMethods,
+		HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
+	}
+	addr := fmt.Sprintf("%s:%d", srv.Host, srv.Port)
+	client, err := ssh.Dial("tcp", addr, cfg)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+	session, _ := client.NewSession()
+	if session != nil {
+		session.Run("rm -f /usr/local/bin/shuttle")
+		session.Close()
+	}
 }
