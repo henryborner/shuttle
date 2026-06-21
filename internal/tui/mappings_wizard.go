@@ -252,7 +252,7 @@ func (w *mappingsWizard) handleStepExclude(key string) {
 		w.serverIdx = 0
 		w.inputBuf = ""
 	default:
-		if len(key) == 1 {
+		if len(key) == 1 && key[0] >= 32 && key[0] != 127 {
 			w.inputBuf += key
 		}
 	}
@@ -316,7 +316,7 @@ func (w *mappingsWizard) handleTextInput(key string, onEnter func()) {
 			w.inputBuf = w.inputBuf[:len(w.inputBuf)-1]
 		}
 	default:
-		if len(key) == 1 {
+		if len(key) == 1 && key[0] >= 32 && key[0] != 127 {
 			w.inputBuf += key
 		}
 	}

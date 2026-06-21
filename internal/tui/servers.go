@@ -256,7 +256,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "backspace":
 		m.backspaceField()
 	default:
-		if len(key.String()) == 1 {
+		if len(key.String()) == 1 && key.String()[0] >= 32 && key.String()[0] != 127 {
 			m.appendField(key.String())
 		}
 	}
