@@ -384,12 +384,13 @@ func (w *mappingsWizard) View(width, height int) string {
 		hint = StyleMuted.Render(i18n.T("wiz.hint_server") + i18n.T("btn.back"))
 	case stepRemote:
 		title = i18n.T("map.target")
-		serverName := ""
+		serverName, serverHost := "", ""
 		if w.serverIdx < len(w.cfg.Servers) {
 			serverName = w.cfg.Servers[w.serverIdx].Name
+			serverHost = w.cfg.Servers[w.serverIdx].Host
 		}
 		body = fmt.Sprintf(i18n.T("explorer.server_fmt")+"\n"+i18n.T("map.wizard_path")+"%s%s",
-			StyleSuccess.Render(serverName),
+			StyleSuccess.Render(serverName), StyleMuted.Render(serverHost),
 			StyleWarning.Render(w.inputBuf), cursorBlink())
 		hint = StyleMuted.Render(i18n.T("wiz.hint_remote") + i18n.T("btn.back"))
 	case stepOptions:
