@@ -170,7 +170,10 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 			}
 			return *m, m.asyncDeploy(authMethods)
 		}
-		// Both key and password empty is fine — auto-detection will try ~/.ssh keys
+		if m.testStatus != testOK {
+			m.testMsg = StyleWarning.Render(i18n.T("srv.must_test"))
+			return *m, nil
+		}
 		m.saveServer()
 		m.saveConfig()
 		m.adding = false
@@ -417,7 +420,7 @@ func (m *serversModel) formView(width, height int) string {
 	}
 
 	if m.testStatus == testNone {
-		body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test"))
+		body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+" → [Enter] "+i18n.T("btn.save"))
 	}
 	body += "\n" + StyleMuted.Render("  "+i18n.T("help.form"))
 
