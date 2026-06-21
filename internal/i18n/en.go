@@ -84,7 +84,7 @@ func init() {
 		"wiz.hint_source": "  Enter: next  Tab: browse  Esc: ",
 		"wiz.hint_excl":   "  ↑↓ select  Enter: add  Tab: browse folder  Backspace: erase",
 		"wiz.hint_server": "  Enter: select  Esc: ",
-		"wiz.hint_remote": "  Enter: next  Tab: browse  Ctrl+B: remote  Esc: ",
+		"wiz.hint_remote": "  Enter: next  Tab: remote  Esc: ",
 		"wiz.hint_opts":   "  Enter: ",
 
 		// Servers

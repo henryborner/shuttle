@@ -84,7 +84,7 @@ func init() {
 		"wiz.hint_source": "  Enter: 下一步  Tab: 浏览目录  Esc: ",
 		"wiz.hint_excl":   "  ↑↓ 选择  Enter: 添加  Tab: 浏览目录  Backspace: 删除",
 		"wiz.hint_server": "  Enter: 选择  Esc: ",
-		"wiz.hint_remote": "  Enter: 下一步  Tab: 浏览本地  Ctrl+B: 浏览远程  Esc: ",
+		"wiz.hint_remote": "  Enter: 下一步  Tab: 浏览远程  Esc: ",
 		"wiz.hint_opts":   "  Enter: ",
 
 		// Servers
