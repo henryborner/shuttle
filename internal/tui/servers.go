@@ -48,9 +48,9 @@ type serversModel struct {
 	// delete confirmation
 	deleteIdx int // -1 = no pending
 	// form
-	formHost, formUser, formKey, formPortStr string
-	formName                                 string
-	formField                                int
+	formHost, formUser, formKey, formPortStr, formPass string
+	formName                                           string
+	formField                                          int
 	// test & deploy
 	testStatus testStatus
 	testMsg    string
@@ -108,7 +108,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			m.editIdx = m.cursor
 			s := m.servers[m.cursor]
 			m.formName, m.formHost = s.Name, s.Host
-			m.formUser, m.formKey = s.User, s.KeyFile
+			m.formUser, m.formKey, m.formPass = s.User, s.KeyFile, s.Pass
 			m.formPortStr = fmt.Sprintf("%d", s.Port)
 			m.formField = 0
 			m.testStatus = testNone
@@ -124,7 +124,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 
 func (m *serversModel) resetForm() {
 	m.adding = true
-	m.formName, m.formHost, m.formUser, m.formKey = "", "", "", ""
+	m.formName, m.formHost, m.formUser, m.formKey, m.formPass = "", "", "", "", ""
 	m.formPortStr = "22"
 	m.formField = 0
 	m.testStatus = testNone
@@ -159,16 +159,22 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "esc":
 		m.adding = false
 	case "tab":
-		m.formField = (m.formField + 1) % 5
+		m.formField = (m.formField + 1) % 6
 	case "enter":
 		if m.testStatus == testOK && !m.deployed {
 			m.testMsg = i18n.T("srv.deploying")
-			authMethods := util.BuildAuthMethods(m.formKey, "")
+			authMethods := util.BuildAuthMethods(m.formKey, m.formPass)
 			if len(authMethods) == 0 {
-				m.testMsg = i18n.T("srv.key_err")
+				m.testMsg = fmt.Sprintf("%s%s", i18n.T("srv.key_err"), i18n.T("srv.empty_auth"))
 				return *m, nil
 			}
 			return *m, m.asyncDeploy(authMethods)
+		}
+		// Validate: at least one auth method
+		if strings.TrimSpace(m.formKey) == "" && strings.TrimSpace(m.formPass) == "" {
+			m.testStatus = testFail
+			m.testMsg = StyleDanger.Render(i18n.T("srv.empty_auth"))
+			return *m, nil
 		}
 		m.saveServer()
 		m.saveConfig()
@@ -176,10 +182,10 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "ctrl+t":
 		m.testStatus = testTesting
 		m.testMsg = i18n.T("srv.testing")
-		authMethods := util.BuildAuthMethods(m.formKey, "")
+		authMethods := util.BuildAuthMethods(m.formKey, m.formPass)
 		if len(authMethods) == 0 {
 			m.testStatus = testFail
-			m.testMsg = i18n.T("srv.key_err")
+			m.testMsg = fmt.Sprintf("%s%s", i18n.T("srv.key_err"), i18n.T("srv.empty_auth"))
 			return *m, nil
 		}
 		return *m, m.asyncTest(authMethods)
@@ -288,6 +294,7 @@ func (m *serversModel) saveServer() {
 		Port:    port,
 		User:    strings.TrimSpace(m.formUser),
 		KeyFile: strings.TrimSpace(strings.TrimRight(m.formKey, "\x00")),
+		Pass:    strings.TrimSpace(m.formPass),
 	}
 	if m.editIdx >= 0 && m.editIdx < len(m.servers) {
 		m.servers[m.editIdx] = s
@@ -309,6 +316,8 @@ func (m *serversModel) appendField(ch string) {
 		m.formUser += ch
 	case 4:
 		m.formKey += ch
+	case 5:
+		m.formPass += ch
 	}
 }
 
@@ -333,6 +342,10 @@ func (m *serversModel) backspaceField() {
 	case 4:
 		if len(m.formKey) > 0 {
 			m.formKey = m.formKey[:len(m.formKey)-1]
+		}
+	case 5:
+		if len(m.formPass) > 0 {
+			m.formPass = m.formPass[:len(m.formPass)-1]
 		}
 	}
 }
@@ -372,12 +385,18 @@ func (m *serversModel) View(width, height int) string {
 }
 
 func (m *serversModel) formView(width, height int) string {
-	fields := []string{i18n.T("srv.field_name"), i18n.T("srv.field_host"), i18n.T("srv.field_port"), i18n.T("srv.field_user"), i18n.T("srv.field_key")}
+	fields := []string{i18n.T("srv.field_name"), i18n.T("srv.field_host"), i18n.T("srv.field_port"), i18n.T("srv.field_user"), i18n.T("srv.field_key"), i18n.T("srv.field_pass")}
 	hints := []string{
 		i18n.T("srv.name_hint"), i18n.T("srv.host_hint"),
 		i18n.T("srv.port_hint"), i18n.T("srv.user_hint"), i18n.T("srv.key_hint"),
+		i18n.T("srv.pass_hint"),
 	}
-	vals := []string{m.formName, m.formHost, m.formPortStr, m.formUser, m.formKey}
+	// Mask password display
+	passDisplay := m.formPass
+	if passDisplay != "" {
+		passDisplay = strings.Repeat("*", len(passDisplay))
+	}
+	vals := []string{m.formName, m.formHost, m.formPortStr, m.formUser, m.formKey, passDisplay}
 
 	body := StyleTitle.Render("📝 "+i18n.T("srv.add")) + "\n\n"
 	for i, f := range fields {
