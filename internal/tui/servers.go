@@ -139,7 +139,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.deleteIdx = m.cursor
 		}
-	case "ctrl+p", "P":
+	case "ctrl+p", "p":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			srv := m.servers[m.cursor]
 			authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
