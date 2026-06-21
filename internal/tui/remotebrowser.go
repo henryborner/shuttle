@@ -228,7 +228,7 @@ func (rb *RemoteBrowser) View(width, height int) string {
 		item := rb.items[i]
 		prefix := "  "
 		if i == rb.cursor {
-			prefix = StyleInfo.Render("")
+			prefix = StyleInfo.Render("▸")
 		}
 		icon := "📄"
 		if item.isDir {
