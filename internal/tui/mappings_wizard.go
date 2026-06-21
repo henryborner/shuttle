@@ -101,14 +101,20 @@ func (w *mappingsWizard) Update(msg tea.Msg) (mappingsWizard, tea.Cmd) {
 		return *w, nil
 	}
 
-	// Tab: open file browser on path-entry steps.
-	if key.String() == "tab" && w.canBrowse() {
-		startPath := w.inputBuf
-		if startPath == "" {
-			startPath, _ = os.Getwd()
+	// Tab: open file browser. stepRemote opens remote browser.
+	if key.String() == "tab" {
+		if w.step == stepRemote && w.serverIdx < len(w.cfg.Servers) {
+			w.remoteBrowser = NewRemoteBrowser(w.cfg.Servers[w.serverIdx])
+			return *w, nil
 		}
-		w.browser = NewFileBrowser(startPath)
-		return *w, nil
+		if w.canBrowse() {
+			startPath := w.inputBuf
+			if startPath == "" {
+				startPath, _ = os.Getwd()
+			}
+			w.browser = NewFileBrowser(startPath)
+			return *w, nil
+		}
 	}
 
 	// Esc / B: go back one step.
@@ -172,7 +178,7 @@ func (w *mappingsWizard) updateLocalBrowser(msg tea.Msg) (mappingsWizard, tea.Cm
 }
 
 func (w *mappingsWizard) canBrowse() bool {
-	return w.step == stepSource || w.step == stepRemote || w.step == stepExclude
+	return w.step == stepSource || w.step == stepExclude
 }
 
 // ── Step handlers ───────────────────────────────────────────────────
