@@ -142,6 +142,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "u":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			srv := m.servers[m.cursor]
+			m.deployed = false
 			m.testMsg = i18n.T("srv.updating")
 			return *m, asyncUpdateAgent(srv)
 		}
@@ -454,6 +455,9 @@ func (m *serversModel) View(width, height int) string {
 				cur, s.Name, s.User, s.Host, s.Port,
 				StyleMuted.Render("🔑 "+truncatePath(s.KeyFile, 20)), agent)
 		}
+	}
+	if m.testMsg != "" {
+		body += "\n  " + m.testMsg
 	}
 	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [U]"+i18n.T("srv.update_short")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
