@@ -465,9 +465,6 @@ func (m *serversModel) formView(width, height int) string {
 		body += "\n  " + StyleWarning.Render(m.testMsg)
 	case testOK:
 		body += "\n  " + m.testMsg
-		if !m.deployed {
-			body += "\n  " + StyleInfo.Render(i18n.T("srv.deploy_hint"))
-		}
 	case testFail:
 		body += "\n  " + StyleDanger.Render(m.testMsg)
 	}
@@ -479,7 +476,7 @@ func (m *serversModel) formView(width, height int) string {
 		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
 	}
 	if m.testStatus == testOK && !m.hasAgent && !m.deployed {
-		body += "\n" + StyleWarning.Render("  [Enter] "+i18n.T("srv.deploy_hint"))
+		body += "\n" + StyleWarning.Render("  "+i18n.T("srv.deploy_hint"))
 	}
 	if m.deployed {
 		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
