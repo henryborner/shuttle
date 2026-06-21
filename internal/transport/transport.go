@@ -27,6 +27,7 @@ type Transport interface {
 	PutFile(path string, reader io.Reader, size int64) error
 	GetFile(path string) (io.ReadCloser, error)
 	ListDir(path string) ([]FileInfo, error)
+	ListDirRecursive(path string) ([]FileInfo, error)
 	MkdirAll(path string) error
 	Remove(path string) error
 	Stat(path string) (FileInfo, error)
@@ -154,6 +155,31 @@ func (t *SFTPTransport) ListDir(path string) ([]FileInfo, error) {
 		})
 	}
 	return files, nil
+}
+
+// ListDirRecursive recursively lists all files under path (non-recursive).
+func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
+	if t.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	var result []FileInfo
+	walker := t.client.Walk(root)
+	for walker.Step() {
+		if err := walker.Err(); err != nil {
+			continue
+		}
+		info := walker.Stat()
+		if info.IsDir() {
+			continue
+		}
+		result = append(result, FileInfo{
+			Path:    filepath.ToSlash(walker.Path()),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+			IsDir:   false,
+		})
+	}
+	return result, nil
 }
 
 // MkdirAll creates directories recursively

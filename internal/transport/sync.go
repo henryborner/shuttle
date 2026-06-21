@@ -161,6 +161,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 }
 
 func (e *SyncEngine) uploadFile(info localFileInfo, remotePath string) error {
+	// 确保远程父目录存在
+	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
+		e.transport.MkdirAll(dir)
+	}
 	f, err := os.Open(info.Path)
 	if err != nil {
 		return err
@@ -190,8 +194,8 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// uploadFileDelta rsync式增量传输：读取远端旧文件签名 → delta匹配 → 推送指令。
-// 如果增量流程失败（如远端未部署 shuttle），自动 fallback 到全量上传。
+// uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
+// 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
 	newData, err := os.ReadFile(info.Path)
 	if err != nil {
@@ -201,36 +205,42 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
-		return 0, 0, e.uploadFile(info, remotePath) // fallback: 全量上传
+		return 0, 0, e.uploadFile(info, remotePath)
 	}
 
-	// 并发读取 stderr，避免死锁
+	// 并发读 stderr，读完自动清理 session
 	var errBuf strings.Builder
 	stderrDone := make(chan struct{})
 	go func() {
 		io.Copy(&errBuf, stderr)
+		stderr.Close() // 触发 session.Wait() + session.Close()
 		close(stderrDone)
 	}()
 
+	// 1. 读取远端签名
 	sig, err := delta.WireDecodeSignature(stdout)
-	stdout.Close()
-	<-stderrDone // 等待 stderr 读取完毕
 	if err != nil {
-		// 增量失败 → fallback 全量上传
 		stdin.Close()
+		<-stderrDone
 		return 0, 0, e.uploadFile(info, remotePath)
 	}
 
+	// 2. 本地匹配
 	algo := delta.GetDefault()
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 	insts := eng.Search(newData)
 
+	// 3. 发送指令到远端（stdin 必须还活着）
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
-		return 0, 0, e.uploadFile(info, remotePath) // fallback
+		<-stderrDone
+		return 0, 0, e.uploadFile(info, remotePath)
 	}
+
+	// 4. 关闭 stdin（信号远端开始重建），等待远端完成
 	stdin.Close()
+	<-stderrDone
 
 	if errBuf.Len() > 0 {
 		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
