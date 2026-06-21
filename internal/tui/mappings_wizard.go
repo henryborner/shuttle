@@ -53,6 +53,7 @@ type mappingsWizard struct {
 	inputBuf   string
 	optDelete  bool
 	optCheck   bool
+	optFlat    bool
 	isFile     bool
 	excludeCur int
 
@@ -81,6 +82,7 @@ func (w *mappingsWizard) initForEdit(idx int) {
 	w.inputBuf = w.wipTask.Name
 	w.optDelete = w.wipTask.Options.Delete
 	w.optCheck = w.wipTask.Options.Checksum
+	w.optFlat = w.wipTask.Options.Flat
 }
 
 func (w *mappingsWizard) Init() tea.Cmd { return nil }
@@ -295,9 +297,12 @@ func (w *mappingsWizard) handleStepOptions(key string) {
 		w.optDelete = !w.optDelete
 	case "c":
 		w.optCheck = !w.optCheck
+	case "f":
+		w.optFlat = !w.optFlat
 	case "enter":
 		w.wipTask.Options.Delete = w.optDelete
 		w.wipTask.Options.Checksum = w.optCheck
+		w.wipTask.Options.Flat = w.optFlat
 		if w.editIdx >= 0 && w.editIdx < len(w.cfg.Tasks) {
 			w.cfg.Tasks[w.editIdx] = w.wipTask
 		} else {
@@ -405,7 +410,11 @@ func (w *mappingsWizard) View(width, height int) string {
 		if w.optCheck {
 			chkMark = StyleSuccess.Render(i18n.T("map.opt_check_on"))
 		}
-		body = fmt.Sprintf("  [D] %s\n  [C] %s", delMark, chkMark)
+		flatMark := i18n.T("map.opt_flat_off")
+		if w.optFlat {
+			flatMark = StyleSuccess.Render(i18n.T("map.opt_flat_on"))
+		}
+		body = fmt.Sprintf("  [D] %s\n  [C] %s\n  [F] %s", delMark, chkMark, flatMark)
 		hint = StyleMuted.Render(i18n.T("wiz.hint_opts") + i18n.T("btn.save") + "  Esc: " + i18n.T("btn.back"))
 	}
 

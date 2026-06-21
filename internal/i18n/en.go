@@ -77,8 +77,8 @@ func init() {
 		"map.opt_delete_off": "☐ delete extra files",
 		"map.opt_delete_on":  "☑ delete extra files",
 		"map.opt_check_off":  "☐ checksum mode",
-		"map.opt_check_on":   "☑ checksum mode",
-
+		"map.opt_check_on":   "☑ checksum mode", "map.opt_flat_off": "☐ Flat (no source folder wrapper)",
+		"map.opt_flat_on": "☑ Flat (no source folder wrapper)",
 		// Wizard hints
 		"wiz.hint_name":   "  Enter: next  Esc: ",
 		"wiz.hint_source": "  Enter: next  Tab: browse  Esc: ",

@@ -78,6 +78,8 @@ func init() {
 		"map.opt_delete_on":  "☑ 删除多余文件",
 		"map.opt_check_off":  "☐ 校验和模式",
 		"map.opt_check_on":   "☑ 校验和模式",
+		"map.opt_flat_off":   "☐ 扁平映射（不套源文件夹）",
+		"map.opt_flat_on":    "☑ 扁平映射（不套源文件夹）",
 
 		// Wizard hints
 		"wiz.hint_name":   "  Enter: 下一步  Esc: ",
