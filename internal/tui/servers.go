@@ -58,7 +58,7 @@ type serversModel struct {
 }
 
 func newServers(cfg *config.Config, cfgPath string) *serversModel {
-	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPortStr: "22"}
+	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPortStr: "22", deleteIdx: -1}
 }
 
 func (m *serversModel) Init() tea.Cmd { return nil }

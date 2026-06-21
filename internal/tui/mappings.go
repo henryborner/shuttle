@@ -20,7 +20,7 @@ type mappingsModel struct {
 }
 
 func newMappings(cfg *config.Config, cfgPath string) *mappingsModel {
-	return &mappingsModel{cfg: cfg, cfgPath: cfgPath}
+	return &mappingsModel{cfg: cfg, cfgPath: cfgPath, deleteIdx: -1}
 }
 
 func (m *mappingsModel) Init() tea.Cmd { return nil }
