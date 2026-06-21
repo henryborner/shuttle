@@ -1,17 +1,16 @@
-
 package tui
 
 import (
 	"fmt"
-	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/i18n"
+	"github.com/henryborner/shuttle/internal/util"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -38,17 +37,9 @@ func NewRemoteBrowser(srv config.Server) *RemoteBrowser {
 }
 
 func (rb *RemoteBrowser) connect() {
-	// Read key using the proven method
-	home, _ := os.UserHomeDir()
-	keyPath := filepath.Clean(filepath.Join(home, ".ssh", "id_ed25519"))
-	key, err := os.ReadFile(keyPath)
+	signer, err := util.ReadSSHKey("")
 	if err != nil {
 		rb.errMsg = fmt.Sprintf(i18n.T("remote.key_err"), err)
-		return
-	}
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		rb.errMsg = fmt.Sprintf(i18n.T("remote.parse_err"), err)
 		return
 	}
 
@@ -56,7 +47,7 @@ func (rb *RemoteBrowser) connect() {
 		User:            rb.server.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         8 * 1000000000, // 8s
+		Timeout:         8 * time.Second,
 	}
 	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", rb.server.Host, rb.server.Port), cfg)
 	if err != nil {

@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -7,6 +6,7 @@ import (
 
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/transport"
+	"github.com/henryborner/shuttle/internal/util"
 )
 
 // doSync 执行同步任务
@@ -95,10 +95,10 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 		if stats.DeltaFiles > 0 {
 			fmt.Printf(" Δ:%d", stats.DeltaFiles)
 		}
-		fmt.Printf(" | %s", formatBytes(stats.TotalBytes))
+		fmt.Printf(" | %s", util.FormatBytes(stats.TotalBytes))
 		if stats.DeltaSaved > 0 {
 			fmt.Printf(" 💾 增量节省:%s (%.0f%%)",
-				formatBytes(stats.DeltaSaved),
+				util.FormatBytes(stats.DeltaSaved),
 				float64(stats.DeltaSaved)/float64(stats.TotalBytes)*100)
 		}
 		if len(stats.Errors) > 0 {
@@ -110,17 +110,4 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 	if dryRun {
 		fmt.Println("🔍 模拟运行结束 — 使用 'shuttle push' 执行实际同步")
 	}
-}
-
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/i18n"
+	"github.com/henryborner/shuttle/internal/util"
 	"golang.org/x/crypto/ssh"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -146,14 +147,9 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "enter":
 		if m.testStatus == testOK && !m.deployed {
 			m.testMsg = i18n.T("srv.deploying")
-			keyData, err := m.readKeyFile()
+			signer, err := util.ReadSSHKey(m.formKey)
 			if err != nil {
 				m.testMsg = fmt.Sprintf(i18n.T("srv.key_err"), err)
-				return *m, nil
-			}
-			signer, err := ssh.ParsePrivateKey(keyData)
-			if err != nil {
-				m.testMsg = fmt.Sprintf(i18n.T("srv.parse_err"), err)
 				return *m, nil
 			}
 			return *m, m.asyncDeploy(signer)
@@ -164,16 +160,10 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "ctrl+t":
 		m.testStatus = testTesting
 		m.testMsg = i18n.T("srv.testing")
-		keyData, err := m.readKeyFile()
+		signer, err := util.ReadSSHKey(m.formKey)
 		if err != nil {
 			m.testStatus = testFail
 			m.testMsg = fmt.Sprintf(i18n.T("srv.key_err"), err)
-			return *m, nil
-		}
-		signer, err := ssh.ParsePrivateKey(keyData)
-		if err != nil {
-			m.testStatus = testFail
-			m.testMsg = fmt.Sprintf(i18n.T("srv.parse_err"), err)
 			return *m, nil
 		}
 		return *m, m.asyncTest(signer)
@@ -185,26 +175,6 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	}
 	return *m, nil
-}
-
-func (m *serversModel) readKeyFile() ([]byte, error) {
-	// Try user's explicit input path
-	p := filepath.Clean(expandPath(m.formKey))
-	data, err := os.ReadFile(p)
-	if err == nil {
-		return data, nil
-	}
-
-	// Fallback: try standard SSH key names using filepath.Join (proven working in tests)
-	home, _ := os.UserHomeDir()
-	for _, name := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
-		data, err = os.ReadFile(filepath.Join(home, ".ssh", name))
-		if err == nil {
-			return data, nil
-		}
-	}
-
-	return nil, fmt.Errorf("%v", err)
 }
 
 // asyncTest runs the connection test in a goroutine, returns result via message

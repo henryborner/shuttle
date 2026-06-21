@@ -73,7 +73,4 @@ func runReceive(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 替换文件失败: %v\n", err)
 		os.Exit(1)
 	}
-
-	// 成功
-	os.Exit(0)
 }

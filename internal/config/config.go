@@ -1,4 +1,3 @@
-
 // 使用 YAML 格式，定义多组本地→远程映射
 package config
 
@@ -8,7 +7,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
-
 
 type Task struct {
 	Name    string  `yaml:"name"`
@@ -25,7 +23,6 @@ type Options struct {
 	Checksum bool     `yaml:"checksum"` // 用校验和判断差异
 	Watch    bool     `yaml:"watch"`    // 监听模式（预留）
 }
-
 
 type Server struct {
 	Name    string `yaml:"name"`
@@ -45,7 +42,6 @@ type Config struct {
 	Tasks    []Task   `yaml:"tasks"`
 }
 
-
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -60,18 +56,16 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-
 func (c *Config) Save(path string) error {
 	if c.Version == "" {
 		c.Version = "1.0"
 	}
 	data, err := yaml.Marshal(c)
 	if err != nil {
-		return fmt.Errorf("序列化配置失 %w", err)
+		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 	return os.WriteFile(path, data, 0644)
 }
-
 
 func (c *Config) Validate() error {
 	for i, t := range c.Tasks {
@@ -87,7 +81,6 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
-
 
 func (c *Config) GetTask(name string) *Task {
 	for i := range c.Tasks {
@@ -107,8 +100,6 @@ func (c *Config) GetServer(name string) *Server {
 	}
 	return nil
 }
-
-
 
 func ParseTarget(target string) (serverName, path string) {
 	for i := 0; i < len(target); i++ {

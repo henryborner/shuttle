@@ -4,10 +4,10 @@ package transport
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/henryborner/shuttle/internal/util"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -61,28 +61,9 @@ func NewSFTP(cfg SFTPConfig) *SFTPTransport {
 func (t *SFTPTransport) Connect() error {
 	var authMethods []ssh.AuthMethod
 
-	keyPaths := []string{}
-	if t.cfg.KeyFile != "" {
-		keyPaths = append(keyPaths, t.cfg.KeyFile)
-	}
-	home, _ := os.UserHomeDir()
-	keyPaths = append(keyPaths,
-		filepath.Join(home, ".ssh", "id_ed25519"),
-		filepath.Join(home, ".ssh", "id_rsa"),
-		filepath.Join(home, ".ssh", "id_ecdsa"),
-	)
-
-	for _, kp := range keyPaths {
-		key, err := os.ReadFile(kp)
-		if err != nil {
-			continue
-		}
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			continue
-		}
+	signer, err := util.ReadSSHKey(t.cfg.KeyFile)
+	if err == nil {
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
-		break
 	}
 
 	if t.cfg.Pass != "" {

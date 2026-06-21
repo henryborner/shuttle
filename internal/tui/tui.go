@@ -1,4 +1,3 @@
-
 package tui
 
 import (
@@ -9,6 +8,7 @@ import (
 	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/i18n"
 	"github.com/henryborner/shuttle/internal/transport"
+	"github.com/henryborner/shuttle/internal/util"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -282,7 +282,7 @@ func (m *Model) View() string {
 			syncLine += "  " + RenderProgress(done, total, m.width-10) + "\n"
 			syncLine += fmt.Sprintf("  Files: %d/%d  |  %s / %s",
 				sp.filesDone, sp.filesTotal,
-				formatBytes(sp.bytesSent), formatBytes(sp.bytesTotal))
+				util.FormatBytes(sp.bytesSent), util.FormatBytes(sp.bytesTotal))
 		}
 		syncLine = StyleBorder.Width(m.width - 4).Render(syncLine)
 	} else if m.syncErr != "" {
@@ -293,7 +293,7 @@ func (m *Model) View() string {
 			errPart = " | " + m.syncErr
 		}
 		syncLine = StyleSuccess.Render(fmt.Sprintf(i18n.T("sync.done_fmt"),
-			m.sp.taskName, m.sp.filesDone, formatBytes(m.sp.bytesSent), errPart))
+			m.sp.taskName, m.sp.filesDone, util.FormatBytes(m.sp.bytesSent), errPart))
 		if m.sp.savedPct > 0 {
 			syncLine += StyleInfo.Render(fmt.Sprintf(" | Δ %.0f%%", m.sp.savedPct))
 		}
@@ -419,17 +419,4 @@ func Run(cfg *config.Config, cfgPath string) error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
-}
-
-func formatBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

@@ -1,15 +1,14 @@
-
 package tui
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/i18n"
+	"github.com/henryborner/shuttle/internal/util"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
@@ -121,25 +120,8 @@ func (em *explorerModel) connectRemote(srv config.Server) {
 		em.remoteBrowser = nil
 	}
 
-	home, _ := os.UserHomeDir()
-	keyPaths := []string{srv.KeyFile,
-		filepath.Join(home, ".ssh", "id_ed25519"),
-		filepath.Join(home, ".ssh", "id_rsa")}
-	var signer ssh.Signer
-	for _, kp := range keyPaths {
-		if kp == "" {
-			continue
-		}
-		key, err := os.ReadFile(kp)
-		if err != nil {
-			continue
-		}
-		signer, err = ssh.ParsePrivateKey(key)
-		if err == nil {
-			break
-		}
-	}
-	if signer == nil {
+	signer, err := util.ReadSSHKey(srv.KeyFile)
+	if err != nil {
 		em.msg = i18n.T("explorer.no_key")
 		em.msgType = "err"
 		return

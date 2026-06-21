@@ -1,8 +1,8 @@
-
 package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -64,7 +64,6 @@ var (
 	IconDelta   = StyleInfo.Render("Δ")
 )
 
-
 func RenderNav(pages []string, active int, width int) string {
 	var items []string
 	for i, p := range pages {
@@ -77,11 +76,9 @@ func RenderNav(pages []string, active int, width int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, items...)
 }
 
-
 func RenderHelp(keys string) string {
 	return StyleHelp.Render(keys)
 }
-
 
 func RenderProgress(done, total int, width int) string {
 	if total == 0 {
@@ -92,14 +89,7 @@ func RenderProgress(done, total int, width int) string {
 		barWidth = 10
 	}
 	filled := int(float64(done) / float64(total) * float64(barWidth))
-	bar := ""
-	for i := 0; i < barWidth; i++ {
-		if i < filled {
-			bar += "█"
-		} else {
-			bar += "░"
-		}
-	}
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 	pct := float64(done) / float64(total) * 100
 	return StyleInfo.Render(bar) + StyleMuted.Render("  "+pctStr(pct))
 }
