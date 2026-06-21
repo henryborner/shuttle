@@ -63,7 +63,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		rp, _ := filepath.Rel(opts.Source, lf.Path)
 		if rp == "." || rp == "" {
 			rp = filepath.Base(opts.Source)
-		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
+		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
 			rp = filepath.Join(filepath.Base(opts.Source), rp)
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, rp))
@@ -205,7 +205,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			}
 			if !found {
 				if !opts.DryRun {
-					e.transport.Remove(rf.Path)
+					if err := e.transport.Remove(rf.Path); err != nil {
+						stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
+						continue
+					}
 				}
 				stats.DeletedFiles++
 			}
@@ -269,7 +272,9 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		<-localDone
-		return 0, 0, e.uploadFile(info, remotePath)
+		// delta 不可用，回退全量上传（远端可能未部署 shuttle agent）
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
 	}
 
 	// 并发读 stderr
@@ -287,7 +292,8 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		stdin.Close()
 		<-localDone
 		<-stderrDone
-		return 0, 0, e.uploadFile(info, remotePath)
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
 	}
 
 	// 等待本地文件读完
@@ -308,7 +314,8 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
 		<-stderrDone
-		return 0, 0, e.uploadFile(info, remotePath)
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("delta encode instructions: %w", err)
 	}
 
 	// 4. 关闭 stdin（信号远端开始重建），等待远端完成
@@ -338,13 +345,15 @@ func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileI
 		}
 		relPath, _ := filepath.Rel(root, path)
 		for _, p := range excludes {
-			if ok, _ := filepath.Match(p, filepath.Base(path)); ok {
+			// 规范化模式：去掉尾部 / 以便匹配 filepath.Base 结果
+			pat := strings.TrimRight(p, "/")
+			if ok, _ := filepath.Match(pat, filepath.Base(path)); ok {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-			if ok, _ := filepath.Match(p, relPath); ok {
+			if ok, _ := filepath.Match(pat, relPath); ok {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
