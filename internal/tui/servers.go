@@ -117,7 +117,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.cursor < len(m.servers) {
+		if m.cursor < len(m.servers)-1 {
 			m.cursor++
 		}
 	case "a":
@@ -139,8 +139,8 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.deleteIdx = m.cursor
 		}
-	case "ctrl+p":
-		if m.cursor < len(m.servers) {
+	case "ctrl+p", "P":
+		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			srv := m.servers[m.cursor]
 			authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
 			if len(authMethods) > 0 {
@@ -461,7 +461,7 @@ func (m *serversModel) View(width, height int) string {
 				StyleMuted.Render("🔑 "+truncatePath(s.KeyFile, 20)), agent)
 		}
 	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  "+i18n.T("srv.update_hint")+"  "+i18n.T("help.nav"))
+	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [P]"+i18n.T("srv.update_short")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
