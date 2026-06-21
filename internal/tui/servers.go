@@ -192,6 +192,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	switch key.String() {
 	case "esc":
 		m.adding = false
+		m.testMsg = ""
 	case "tab":
 		m.formField = (m.formField + 1) % 6
 	case "enter":
@@ -212,6 +213,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 		m.saveServer()
 		m.saveConfig()
 		m.adding = false
+		m.testMsg = ""
 	case "ctrl+t":
 		m.testStatus = testTesting
 		m.testMsg = i18n.T("srv.testing")
