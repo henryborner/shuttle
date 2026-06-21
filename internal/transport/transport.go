@@ -157,18 +157,34 @@ func (t *SFTPTransport) ListDir(path string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// ListDirRecursive recursively lists all files under path (non-recursive).
+// skipDirs lists directory base names to skip during recursive walk.
+var skipDirs = map[string]bool{
+	"proc": true, "sys": true, "dev": true, "run": true,
+	"snap": true, "lost+found": true,
+}
+
+// ListDirRecursive recursively lists all files under root, skipping system dirs.
 func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 	if t.client == nil {
 		return nil, fmt.Errorf("not connected")
 	}
 	var result []FileInfo
+	var count int
+	const maxFiles = 100000
 	walker := t.client.Walk(root)
 	for walker.Step() {
+		if count >= maxFiles {
+			break
+		}
 		if err := walker.Err(); err != nil {
 			continue
 		}
 		info := walker.Stat()
+		// Skip known system directories
+		if info.IsDir() && skipDirs[info.Name()] {
+			walker.SkipDir()
+			continue
+		}
 		if info.IsDir() {
 			continue
 		}
@@ -178,6 +194,7 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 			ModTime: info.ModTime(),
 			IsDir:   false,
 		})
+		count++
 	}
 	return result, nil
 }

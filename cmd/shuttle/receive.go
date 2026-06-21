@@ -25,32 +25,46 @@ func init() {
 func runReceive(cmd *cobra.Command, args []string) {
 	filePath := args[0]
 
-	// 1. 读取本地旧文件（基础文件）
-	oldData, err := os.ReadFile(filePath)
+	// 1. 打开本地旧文件（流式读签名，不全量入内存）
+	f, err := os.Open(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 读取文件失败: %v\n", err)
 		os.Exit(1)
 	}
+	defer f.Close()
 
-	// 2. 生成块签名
-	blockSize := delta.CalculateBlockSize(int64(len(oldData)))
+	fi, err := f.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: stat 失败: %v\n", err)
+		os.Exit(1)
+	}
+	fileSize := fi.Size()
+
+	// 2. 流式生成块签名（不加载全文件）
+	blockSize := delta.CalculateBlockSize(fileSize)
 	algo := delta.GetDefault()
-	sig := delta.GenerateSignature(oldData, blockSize, algo)
+	sig := delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
 
-	// 3. 发送签名到 stdout（发送端）
+	// 3. 发送签名到 stdout
 	if err := delta.WireEncodeSignature(os.Stdout, sig); err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 发送签名失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 4. 从 stdin 读取指令（发送端）
+	// 4. 从 stdin 读取指令
 	instructions, err := delta.WireDecodeInstructions(os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 读取指令失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 5. 重建文件（传入各块实际长度，避免尾块复制多余字节）
+	// 5. 读取 basis 文件用于重建（重建阶段仍需随机读取块，暂保留 ReadFile）
+	oldData, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 重新读取文件失败: %v\n", err)
+		os.Exit(1)
+	}
+
 	blockLens := make([]int32, len(sig.BlockSums))
 	for i, bs := range sig.BlockSums {
 		blockLens[i] = bs.Length

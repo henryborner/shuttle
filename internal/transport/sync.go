@@ -54,7 +54,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 	remoteFiles := make(map[string]FileInfo)
-	entries, err := e.transport.ListDir(opts.Target)
+	entries, err := e.transport.ListDirRecursive(opts.Target)
 	if err == nil {
 		for _, f := range entries {
 			// 使用相对于 target 的路径作为 key，避免不同目录同名文件覆盖

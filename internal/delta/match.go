@@ -3,7 +3,9 @@
 package delta
 
 import (
+	"bytes"
 	"hash"
+	"io"
 	"sort"
 )
 
@@ -223,12 +225,17 @@ func (me *MatchEngine) verifyStrong(data []byte, idx int) bool {
 
 // GenerateSignature 为文件B生成块签名（接收端调用）
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
+	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
+}
+
+// GenerateSignatureReader 从 io.Reader 流式生成块签名，避免全量读入内存。
+func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) *Signature {
 	sig := &Signature{
 		BlockSize: blockSize,
-		FileSize:  int64(len(data)),
+		FileSize:  fileSize,
 	}
 
-	numBlocks := (len(data) + int(blockSize) - 1) / int(blockSize)
+	numBlocks := (fileSize + int64(blockSize) - 1) / int64(blockSize)
 	sig.BlockSums = make([]BlockSum, numBlocks)
 
 	algo, err := GetAlgo(strongAlgo)
@@ -236,19 +243,23 @@ func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signatu
 		algo = MustGet(GetDefault())
 	}
 
-	for i := 0; i < numBlocks; i++ {
-		start := i * int(blockSize)
-		end := start + int(blockSize)
-		if end > len(data) {
-			end = len(data)
+	buf := make([]byte, blockSize)
+	for i := int64(0); i < numBlocks; i++ {
+		remain := fileSize - i*int64(blockSize)
+		if remain > int64(blockSize) {
+			remain = int64(blockSize)
 		}
-		block := data[start:end]
+		if _, err := io.ReadFull(r, buf[:remain]); err != nil {
+			// Should not happen if fileSize is correct
+			break
+		}
+		block := buf[:remain]
 
 		sig.BlockSums[i] = BlockSum{
-			Index:  i,
+			Index:  int(i),
 			Sum1:   Checksum1(block),
 			Sum2:   strongSum(algo.New, block),
-			Offset: int64(start),
+			Offset: i * int64(blockSize),
 			Length: int32(len(block)),
 		}
 	}
