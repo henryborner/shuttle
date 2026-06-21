@@ -15,50 +15,48 @@ var (
 	dryRun  bool
 	rootCmd = &cobra.Command{
 		Use:   "shuttle",
-		Short: "🚀 Shuttle — 增量文件同步工具",
-		Long: `Shuttle 是一个 Windows 原生的文件同步工具。
-基于 rsync 增量算法，支持配置文件定义多组本地→远程映射。
-通过 SFTP/SSH 将文件高效推送到服务器。`,
+		Short: "Shuttle — rsync-style delta sync tool",
+		Long: `Shuttle is a Windows-native file sync tool.
+Uses rsync delta algorithm with config-file defined local→remote mappings.
+Transfers files efficiently over SFTP/SSH.`,
 	}
 )
 
 func main() {
 	pushCmd := &cobra.Command{
-		Use:   "push [任务名]",
-		Short: "执行同步任务",
-		Long:  "执行配置文件中的同步任务。不指定任务名则执行全部。",
+		Use:   "push [task name]",
+		Short: "Run sync tasks",
+		Long:  "Run sync tasks from config. Without task name, runs all.",
 		Run:   runPush,
 	}
-	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "配置文件路径")
-	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "模拟运行，不实际同步")
+	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "config file path")
+	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "dry run without actual sync")
 	rootCmd.AddCommand(pushCmd)
 
-	// TUI 命令
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "tui",
 		Short: "Launch interactive TUI",
-		Long:  "Launch the interactive terminal UI for managing mappings, servers, and sync.",
 		Run:   runTUI,
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "config",
-		Short: "显示配置文件信息和位置",
+		Short: "Show config file info and location",
 		Run:   runConfig,
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
-		Short: "在当前目录生成示例配置文件",
+		Short: "Generate sample config in current directory",
 		Run:   runInit,
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
-		Short: "显示版本信息",
+		Short: "Show version info",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("Shuttle v0.1.2.1 - rsync-style delta sync for Windows")
-			fmt.Println("增量: Adler-32 + MD5/SHA256 | 传输: SFTP")
+			fmt.Println("Delta: Adler-32 + MD5/SHA256 | Transport: SFTP")
 		},
 	})
 
@@ -77,12 +75,13 @@ func runPush(cmd *cobra.Command, args []string) {
 
 func runConfig(cmd *cobra.Command, args []string) {
 	cwd, _ := os.Getwd()
-	fmt.Printf("📁 当前目录: %s\n", cwd)
-	fmt.Printf("📄 默认配置: syncd.yaml\n")
+	fmt.Printf("CWD: %s\n", cwd)
+	fmt.Printf("Config: syncd.yaml\n")
 	if _, err := os.Stat("syncd.yaml"); err == nil {
-		fmt.Println("✅ 找到 syncd.yaml")
+		fmt.Println("Found syncd.yaml")
+		fmt.Println("Found syncd.yaml")
 	} else {
-		fmt.Println("⚠️  未找到 — 运行 'shuttle init' 生成示例")
+		fmt.Println("Not found — run 'shuttle init' to create")
 	}
 }
 
@@ -109,21 +108,21 @@ tasks:
       checksum: false
 `
 	if _, err := os.Stat("syncd.yaml"); err == nil {
-		fmt.Println("⚠️  syncd.yaml 已存在")
+		fmt.Println("syncd.yaml already exists")
 		return
 	}
 	os.WriteFile("syncd.yaml", []byte(example), 0644)
-	fmt.Println("✅ 已生成 syncd.yaml")
+	fmt.Println("Created syncd.yaml")
 }
 
 func runTUI(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load("syncd.yaml")
 	if err != nil {
 		if os.IsNotExist(err) {
-			// 配置文件不存在时允许空配置进入 TUI
+			// Allow empty config to enter TUI for first-time setup
 			cfg = &config.Config{Version: "1.0"}
 		} else {
-			fmt.Fprintf(os.Stderr, "❌ 配置加载失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
