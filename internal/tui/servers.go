@@ -134,6 +134,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			m.testStatus = testNone
 			m.deployed = false
 			m.hasAgent = false
+			m.testMsg = StyleMuted.Render(i18n.T("srv.edit_mode"))
 		}
 	case "d":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
