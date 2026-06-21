@@ -55,11 +55,26 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 	remoteFiles := make(map[string]FileInfo)
-	entries, err := e.transport.ListDirRecursive(opts.Target)
-	if err == nil {
+	// 按远端父目录分组列出，避免从根目录递归遍历整个文件系统
+	remoteDirs := make(map[string]bool)
+	for _, lf := range localFiles {
+		rp, _ := filepath.Rel(opts.Source, lf.Path)
+		if rp == "." || rp == "" {
+			rp = filepath.Base(opts.Source)
+		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
+			rp = filepath.Join(filepath.Base(opts.Source), rp)
+		}
+		remotePath := filepath.ToSlash(filepath.Join(opts.Target, rp))
+		remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
+		remoteDirs[remoteDir] = true
+	}
+	for dir := range remoteDirs {
+		entries, err := e.transport.ListDir(dir)
+		if err != nil {
+			continue // 目录不存在 → 全是新文件，跳过
+		}
 		for _, f := range entries {
-			// 使用相对于 target 的路径作为 key，避免不同目录同名文件覆盖
-			key := strings.TrimPrefix(f.Path, opts.Target)
+			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
 			key = strings.TrimPrefix(key, "/")
 			remoteFiles[key] = f
 		}
