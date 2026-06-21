@@ -68,10 +68,8 @@ func (m *serversModel) Init() tea.Cmd { return nil }
 func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	// Delete confirmation pending.
 	if m.deleteIdx >= 0 {
-		// Still handle deploy/update results so they don't leak later
-		if dr, ok := msg.(deployResultMsg); ok {
-			m.deployed = dr.ok
-			m.testMsg = dr.msg
+		// Silently eat async deploy results during confirmation
+		if _, ok := msg.(deployResultMsg); ok {
 			return *m, nil
 		}
 		key, ok := msg.(tea.KeyMsg)
@@ -144,6 +142,8 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	case "d":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
+			m.deployed = false
+			m.testMsg = ""
 			m.deleteIdx = m.cursor
 		}
 	case "u":
