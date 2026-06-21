@@ -49,7 +49,11 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 			}
 		}
 		if err != nil {
-			lastErr = err
+			lastErr = fmt.Errorf("%s: %w", filepath.Base(p), err)
+			// If user explicitly specified this key, fail fast instead of silently falling back
+			if keyPath != "" && p == keyPath {
+				return nil, lastErr
+			}
 			continue
 		}
 		return signer, nil
