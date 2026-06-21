@@ -52,7 +52,7 @@ func (m *dashboardModel) View(width, height int) string {
 		for i, t := range tasks {
 			icon := IconWaiting
 			if i == m.cursor {
-				icon = StyleInfo.Render("▸")
+				icon = StyleInfo.Render("▸ ")
 			}
 
 			src := truncatePath(t.Source, 28)

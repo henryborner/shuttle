@@ -376,7 +376,7 @@ func (w *mappingsWizard) View(width, height int) string {
 			for i, s := range w.cfg.Servers {
 				cur := "  "
 				if i == w.serverIdx {
-					cur = StyleInfo.Render("▸")
+					cur = StyleInfo.Render("▸ ")
 				}
 				body += fmt.Sprintf("%s%s  %s@%s:%d\n", cur, s.Name, s.User, s.Host, s.Port)
 			}
@@ -429,7 +429,7 @@ func (w *mappingsWizard) viewExclude() (title, body, hint string) {
 		for i, e := range w.wipTask.Options.Exclude {
 			cur := "  "
 			if i == w.excludeCur {
-				cur = StyleInfo.Render("▸")
+				cur = StyleInfo.Render("▸ ")
 			}
 			body += fmt.Sprintf("%s%s\n", cur, StyleWarning.Render(e))
 		}

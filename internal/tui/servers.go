@@ -489,7 +489,7 @@ func (m *serversModel) View(width, height int) string {
 		for i, s := range m.servers {
 			cur := "  "
 			if i == m.cursor {
-				cur = StyleInfo.Render("▸")
+				cur = StyleInfo.Render("▸ ")
 			}
 			agent := ""
 			body += fmt.Sprintf("%s%s  %s@%s:%d  %s%s\n",
@@ -522,7 +522,7 @@ func (m *serversModel) formView(width, height int) string {
 	for i, f := range fields {
 		prefix := "  "
 		if i == m.formField {
-			prefix = StyleInfo.Render("▸")
+			prefix = StyleInfo.Render("▸ ")
 		}
 		body += fmt.Sprintf("%s%s: %s\n", prefix, f, StyleWarning.Render(vals[i]))
 		body += fmt.Sprintf("     %s\n", StyleMuted.Render(hints[i]))

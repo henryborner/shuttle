@@ -121,7 +121,7 @@ func (m *mappingsModel) View(width, height int) string {
 		for i, t := range m.cfg.Tasks {
 			cur := "  "
 			if i == m.cursor {
-				cur = StyleInfo.Render("▸")
+				cur = StyleInfo.Render("▸ ")
 			}
 			opts := ""
 			if t.Options.Delete {

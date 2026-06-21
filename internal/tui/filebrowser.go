@@ -1,4 +1,3 @@
-
 package tui
 
 import (
@@ -168,7 +167,7 @@ func (fb *FileBrowser) View(width, height int) string {
 		item := fb.items[i]
 		prefix := "  "
 		if i == fb.cursor {
-			prefix = StyleInfo.Render("▸")
+			prefix = StyleInfo.Render("▸ ")
 		}
 		icon := "📄"
 		if item.isDir {

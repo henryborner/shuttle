@@ -120,7 +120,7 @@ func (m *settingsModel) View(width, height int) string {
 	for i, item := range items {
 		cur := "  "
 		if i == m.cursor {
-			cur = StyleInfo.Render("▸")
+			cur = StyleInfo.Render("▸ ")
 		}
 		body += fmt.Sprintf("%s%s: %s\n", cur, item, vals[i])
 	}

@@ -197,7 +197,7 @@ func (em *explorerModel) View(width, height int) string {
 		for i, s := range em.cfg.Servers {
 			cur := "  "
 			if i == em.serverIdx {
-				cur = StyleInfo.Render("▸")
+				cur = StyleInfo.Render("▸ ")
 			}
 			body += fmt.Sprintf("%s%s  %s@%s:%d\n", cur, s.Name, s.User, s.Host, s.Port)
 		}
