@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/henryborner/shuttle/internal/delta"
@@ -65,12 +66,20 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
+	// ── 第一遍：新文件（串行，共用 SFTP 连接） ──
+	// ── 同时收集需要 delta 的文件 ──
+	type deltaJob struct {
+		lf         localFileInfo
+		relPath    string
+		remotePath string
+	}
+	var deltaJobs []deltaJob
+
 	for _, lf := range localFiles {
 		relPath, _ := filepath.Rel(opts.Source, lf.Path)
 		if relPath == "." || relPath == "" {
 			relPath = filepath.Base(opts.Source)
 		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
-			// Folder: keep structure
 			relPath = filepath.Join(filepath.Base(opts.Source), relPath)
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
@@ -100,26 +109,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				needUpd = true
 			}
 			if needUpd {
-				var sent, saved int64
-				var fe error
-				if !opts.DryRun {
-					sent, saved, fe = e.uploadFileDelta(lf, remotePath)
-				}
-				stats.UpdatedFiles++
-				stats.SentBytes += sent
-				stats.DeltaSaved += saved
-				if saved > 0 {
-					stats.DeltaFiles++
-				}
-				e.hook.OnFileDone(FileEvent{
-					RelPath: relPath, RemotePath: remotePath,
-					FileSize: lf.Size, BytesSent: sent,
-					IsUpdated: true, IsDelta: saved > 0, DeltaSaved: saved,
-					Error: fe, StartTime: start, Duration: time.Since(start),
-				})
-				if fe != nil {
-					stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", relPath, fe))
-				}
+				deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
 			} else {
 				stats.SkippedFiles++
 				e.hook.OnFileDone(FileEvent{
@@ -130,6 +120,52 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		stats.TotalFiles++
 		stats.TotalBytes += lf.Size
+	}
+
+	// ── 第二遍：delta 传输（并行 worker pool，hook 回调在主 goroutine 防竞态） ──
+	if len(deltaJobs) > 0 && !opts.DryRun {
+		const maxWorkers = 4
+		sem := make(chan struct{}, maxWorkers)
+		type deltaResult struct {
+			job   deltaJob
+			sent  int64
+			saved int64
+			err   error
+		}
+		results := make([]deltaResult, len(deltaJobs))
+		var wg sync.WaitGroup
+
+		for i, dj := range deltaJobs {
+			wg.Add(1)
+			go func(idx int, job deltaJob) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath)
+				results[idx] = deltaResult{job, sent, saved, fe}
+			}(i, dj)
+		}
+		wg.Wait()
+
+		for _, r := range results {
+			stats.UpdatedFiles++
+			stats.SentBytes += r.sent
+			stats.DeltaSaved += r.saved
+			if r.saved > 0 {
+				stats.DeltaFiles++
+			}
+			e.hook.OnFileDone(FileEvent{
+				RelPath: r.job.relPath, RemotePath: r.job.remotePath,
+				FileSize: r.job.lf.Size, BytesSent: r.sent,
+				IsUpdated: true, IsDelta: r.saved > 0, DeltaSaved: r.saved,
+				Error: r.err,
+			})
+			if r.err != nil {
+				stats.Errors = append(stats.Errors, r.err)
+			}
+		}
+	} else if len(deltaJobs) > 0 {
+		stats.UpdatedFiles += len(deltaJobs)
 	}
 
 	if opts.Delete {
