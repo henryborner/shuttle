@@ -365,6 +365,7 @@ func (m *Model) startSync(task config.Task) {
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
 			Checksum: task.Options.Checksum, SkipDots: true,
+			Workers: m.cfg.Workers,
 		})
 
 		if err != nil {

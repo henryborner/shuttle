@@ -39,6 +39,7 @@ type Config struct {
 	Version  string   `yaml:"version"`
 	Language string   `yaml:"language,omitempty"` // "en" or "zh"
 	Checksum string   `yaml:"checksum,omitempty"` // default checksum algo
+	Workers  int      `yaml:"workers,omitempty"`  // delta并行数，0默认=4，1=串行
 	Servers  []Server `yaml:"servers"`
 	Tasks    []Task   `yaml:"tasks"`
 }

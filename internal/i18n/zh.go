@@ -129,6 +129,7 @@ func init() {
 		"set.title":       "设置",
 		"set.language":    "语言",
 		"set.checksum":    "默认校验和算法",
+		"set.workers":     "Delta 并行数",
 		"set.config_path": "配置文件路径",
 		"set.save":        "保存",
 		"set.cancel":      "取消",

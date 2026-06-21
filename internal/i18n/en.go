@@ -129,6 +129,7 @@ func init() {
 		"set.title":       "Settings",
 		"set.language":    "Language",
 		"set.checksum":    "Default Checksum",
+		"set.workers":     "Delta Workers",
 		"set.config_path": "Config Path",
 		"set.save":        "Save",
 		"set.cancel":      "Cancel",

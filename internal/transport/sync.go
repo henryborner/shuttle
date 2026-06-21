@@ -21,6 +21,7 @@ type SyncOptions struct {
 	Checksum bool
 	DryRun   bool
 	SkipDots bool // skip files/dirs starting with "." (default true for safety)
+	Workers  int  // delta并行数，0默认=4，1=串行
 }
 
 type SyncStats struct {
@@ -139,8 +140,11 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 
 	// ── 第二遍：delta 传输（并行 worker pool，hook 回调在主 goroutine 防竞态） ──
 	if len(deltaJobs) > 0 && !opts.DryRun {
-		const maxWorkers = 4
-		sem := make(chan struct{}, maxWorkers)
+		workers := opts.Workers
+		if workers <= 0 {
+			workers = 4 // default
+		}
+		sem := make(chan struct{}, workers)
 		type deltaResult struct {
 			job   deltaJob
 			sent  int64
