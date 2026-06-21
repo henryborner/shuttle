@@ -139,17 +139,11 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.deleteIdx = m.cursor
 		}
-	case "ctrl+p", "p":
+	case "u":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			srv := m.servers[m.cursor]
-			authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
-			if len(authMethods) > 0 {
-				m.testStatus = testNone
-				m.testMsg = i18n.T("srv.updating")
-				m.formHost, m.formUser, m.formKey, m.formPass = srv.Host, srv.User, srv.KeyFile, srv.Pass
-				m.formPortStr = fmt.Sprintf("%d", srv.Port)
-				return *m, m.asyncDeploy(authMethods)
-			}
+			m.testMsg = i18n.T("srv.updating")
+			return *m, asyncUpdateAgent(srv)
 		}
 	}
 	return *m, nil
@@ -461,7 +455,7 @@ func (m *serversModel) View(width, height int) string {
 				StyleMuted.Render("🔑 "+truncatePath(s.KeyFile, 20)), agent)
 		}
 	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [P]"+i18n.T("srv.update_short")+"  "+i18n.T("help.nav"))
+	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [U]"+i18n.T("srv.update_short")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
@@ -531,6 +525,80 @@ func removeTasksForServer(cfg *config.Config, serverName string) {
 		}
 	}
 	cfg.Tasks = filtered
+}
+
+// asyncUpdateAgent deploys shuttle_linux to the given server (standalone, no form needed).
+func asyncUpdateAgent(srv config.Server) tea.Cmd {
+	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
+	if len(authMethods) == 0 {
+		return func() tea.Msg {
+			return deployResultMsg{ok: false, msg: i18n.T("srv.empty_auth")}
+		}
+	}
+	port := srv.Port
+	if port <= 0 {
+		port = 22
+	}
+	return func() tea.Msg {
+		cfg := &ssh.ClientConfig{
+			User: srv.User, Auth: authMethods,
+			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
+		}
+		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", srv.Host, port), cfg)
+		if err != nil {
+			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.deploy_err"), err)}
+		}
+		defer client.Close()
+
+		exePath, _ := os.Executable()
+		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
+		if _, err := os.Stat(localBin); os.IsNotExist(err) {
+			localBin = "shuttle_linux"
+		}
+		if _, err := os.Stat(localBin); os.IsNotExist(err) {
+			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
+		}
+		binData, err := os.ReadFile(localBin)
+		if err != nil {
+			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.read_err"), err)}
+		}
+
+		deployPaths := []struct {
+			path string
+			cmd  string
+		}{
+			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
+			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
+		}
+
+		for _, dp := range deployPaths {
+			s, _ := client.NewSession()
+			if s == nil {
+				continue
+			}
+			stdin, _ := s.StdinPipe()
+			if stdin == nil {
+				s.Close()
+				continue
+			}
+			s.Start(dp.cmd)
+			stdin.Write(binData)
+			stdin.Close()
+			s.Wait()
+			s.Close()
+
+			v, err := client.NewSession()
+			if err != nil {
+				continue
+			}
+			out, err := v.Output(dp.path + " version")
+			v.Close()
+			if err == nil {
+				return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), string(out), dp.path)}
+			}
+		}
+		return deployResultMsg{ok: false, msg: i18n.T("srv.manual_install")}
+	}
 }
 
 // tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
