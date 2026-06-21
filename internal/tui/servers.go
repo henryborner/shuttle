@@ -497,6 +497,10 @@ func (m *serversModel) formView(width, height int) string {
 		body += "\n  " + m.testMsg
 	case testFail:
 		body += "\n  " + StyleDanger.Render(m.testMsg)
+	default:
+		if m.testMsg != "" {
+			body += "\n  " + StyleWarning.Render(m.testMsg)
+		}
 	}
 
 	body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+"  "+i18n.T("help.form"))
