@@ -130,6 +130,8 @@ func init() {
 		"set.language":    "Language",
 		"set.checksum":    "Default Checksum",
 		"set.workers":     "Delta Workers",
+		"set.serial":      "Serial",
+		"set.parallel":    "Parallel",
 		"set.config_path": "Config Path",
 		"set.save":        "Save",
 		"set.cancel":      "Cancel",

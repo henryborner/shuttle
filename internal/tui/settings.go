@@ -102,9 +102,9 @@ func (m *settingsModel) View(width, height int) string {
 	items := []string{i18n.T("set.language"), i18n.T("set.checksum"), i18n.T("set.workers"), i18n.T("set.config_path")}
 	workerLabel := fmt.Sprintf("%d", m.workerVal)
 	if m.workerVal == 1 {
-		workerLabel += " (串行)"
+		workerLabel += " (" + i18n.T("set.serial") + ")"
 	} else {
-		workerLabel += " (并行)"
+		workerLabel += " (" + i18n.T("set.parallel") + ")"
 	}
 	vals := []string{i18n.T("set.lang_both"), m.algoOpts[m.algoIdx], workerLabel, "syncd.yaml"}
 	if m.langIdx == 0 {
