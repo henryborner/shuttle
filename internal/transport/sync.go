@@ -22,6 +22,7 @@ type SyncOptions struct {
 	DryRun   bool
 	SkipDots bool // skip files/dirs starting with "." (default true for safety)
 	Workers  int  // delta并行数，0默认=4，1=串行
+	Flat     bool // 直接映射内容，不套源文件夹名
 }
 
 type SyncStats struct {
@@ -95,7 +96,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		relPath, _ := filepath.Rel(opts.Source, lf.Path)
 		if relPath == "." || relPath == "" {
 			relPath = filepath.Base(opts.Source)
-		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
+		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
 			relPath = filepath.Join(filepath.Base(opts.Source), relPath)
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
@@ -194,7 +195,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				rp, _ := filepath.Rel(opts.Source, lf.Path)
 				if rp == "." || rp == "" {
 					rp = filepath.Base(opts.Source)
-				} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() {
+				} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
 					rp = filepath.Join(filepath.Base(opts.Source), rp)
 				}
 				if filepath.ToSlash(rp) == name {

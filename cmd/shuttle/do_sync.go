@@ -82,6 +82,7 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			DryRun:   dryRun,
 			SkipDots: true,
 			Workers:  cfg.Workers,
+			Flat:     task.Options.Flat,
 		})
 
 		sftp.Close()

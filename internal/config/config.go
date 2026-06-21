@@ -23,6 +23,7 @@ type Options struct {
 	Compress bool     `yaml:"compress"` // SSH 压缩
 	Checksum bool     `yaml:"checksum"` // 用校验和判断差异
 	Watch    bool     `yaml:"watch"`    // 监听模式（预留）
+	Flat     bool     `yaml:"flat"`     // 直接映射内容不套源文件夹名
 }
 
 type Server struct {
