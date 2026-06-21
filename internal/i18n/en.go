@@ -117,6 +117,7 @@ func init() {
 		"srv.deployed":    "Deployed! ",
 		"srv.not_found":   "shuttle_linux not found",
 		"srv.deploy_hint": "[Enter] Deploy shuttle agent now",
+		"srv.no_agent":    "shuttle agent not found",
 		"srv.must_test":   "Please [Ctrl+T] test connection before saving", "srv.delete_agent": "Delete & cleanup remote agent", "srv.key_err": "Key: %v",
 		"srv.empty_auth":  " Please fill in either a key or password",
 		"srv.parse_err":   "Parse: %v",

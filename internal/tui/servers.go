@@ -27,9 +27,10 @@ const (
 
 // testResultMsg 异步测试结果消息
 type testResultMsg struct {
-	ok     bool
-	msg    string
-	osName string
+	ok       bool
+	msg      string
+	osName   string
+	hasAgent bool // shuttle binary found on remote
 }
 
 // deployResultMsg 异步部署结果消息
@@ -55,6 +56,7 @@ type serversModel struct {
 	testStatus testStatus
 	testMsg    string
 	deployed   bool
+	hasAgent   bool // shuttle binary exists on remote
 }
 
 func newServers(cfg *config.Config, cfgPath string) *serversModel {
@@ -123,6 +125,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			m.formField = 0
 			m.testStatus = testNone
 			m.deployed = false
+			m.hasAgent = false
 		}
 	case "d":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
@@ -140,6 +143,7 @@ func (m *serversModel) resetForm() {
 	m.testStatus = testNone
 	m.testMsg = ""
 	m.deployed = false
+	m.hasAgent = false
 	m.editIdx = -1
 }
 
@@ -148,7 +152,12 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	if tr, ok := msg.(testResultMsg); ok {
 		if tr.ok {
 			m.testStatus = testOK
-			m.testMsg = fmt.Sprintf("%s %s  OS: %s", IconOK, i18n.T("srv.test_ok"), tr.osName)
+			m.hasAgent = tr.hasAgent
+			if tr.hasAgent {
+				m.testMsg = fmt.Sprintf("%s %s  OS: %s", IconOK, i18n.T("srv.test_ok"), tr.osName)
+			} else {
+				m.testMsg = fmt.Sprintf("%s %s  OS: %s | %s", IconOK, i18n.T("srv.test_ok"), tr.osName, StyleWarning.Render(i18n.T("srv.no_agent")))
+			}
 		} else {
 			m.testStatus = testFail
 			m.testMsg = tr.msg
@@ -171,7 +180,12 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "tab":
 		m.formField = (m.formField + 1) % 6
 	case "enter":
-		if m.testStatus == testOK && !m.deployed {
+		if m.testStatus != testOK {
+			m.testMsg = StyleWarning.Render(i18n.T("srv.must_test"))
+			return *m, nil
+		}
+		if !m.hasAgent && !m.deployed {
+			// No agent → try deploy
 			m.testMsg = i18n.T("srv.deploying")
 			authMethods := util.BuildAuthMethods(m.formKey, m.formPass)
 			if len(authMethods) == 0 {
@@ -179,10 +193,6 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 				return *m, nil
 			}
 			return *m, m.asyncDeploy(authMethods)
-		}
-		if m.testStatus != testOK {
-			m.testMsg = StyleWarning.Render(i18n.T("srv.must_test"))
-			return *m, nil
 		}
 		m.saveServer()
 		m.saveConfig()
@@ -233,7 +243,14 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 		if err != nil {
 			return testResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.os_err"), err)}
 		}
-		return testResultMsg{ok: true, msg: i18n.T("srv.test_ok"), osName: string(out)}
+		// Check if shuttle binary exists on remote
+		hasAgent := false
+		if s2, err := client.NewSession(); err == nil {
+			_, err := s2.Output("shuttle version")
+			hasAgent = (err == nil)
+			s2.Close()
+		}
+		return testResultMsg{ok: true, msg: i18n.T("srv.test_ok"), osName: string(out), hasAgent: hasAgent}
 	}
 }
 
@@ -432,6 +449,15 @@ func (m *serversModel) formView(width, height int) string {
 
 	if m.testStatus == testNone {
 		body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+" → [Enter] "+i18n.T("btn.save"))
+	}
+	if m.testStatus == testOK && m.hasAgent && !m.deployed {
+		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
+	}
+	if m.testStatus == testOK && !m.hasAgent && !m.deployed {
+		body += "\n" + StyleWarning.Render("  [Enter] "+i18n.T("srv.deploy_hint"))
+	}
+	if m.deployed {
+		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
 	}
 	body += "\n" + StyleMuted.Render("  "+i18n.T("help.form"))
 
