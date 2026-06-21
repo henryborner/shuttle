@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/henryborner/shuttle/internal/config"
@@ -20,9 +23,16 @@ type startSyncMsg struct {
 	task config.Task
 }
 
+// deletePreviewMsg carries orphan file list from remote scan
+type deletePreviewMsg struct {
+	taskName string
+	files    []string // 远端多余文件列表
+	err      string
+}
+
 // syncMsg carries sync progress updates
 type syncMsg struct {
-	kind       string // "file", "progress", "done"
+	kind       string // "file", "progress", "done", "delete_preview"
 	taskName   string
 	file       string
 	fileDone   int
@@ -31,6 +41,23 @@ type syncMsg struct {
 	bytesTotal int64
 	savedPct   float64
 	err        string
+}
+
+// deleteConfirmStage tracks multi-level delete confirmation
+type deleteConfirmStage int
+
+const (
+	confirmNone   deleteConfirmStage = iota
+	confirmLevel1                    // 第一关：delete 已开启，确认继续？
+	confirmScan                      // 正在扫描远端多余文件…
+	confirmLevel2                    // 第二关：列出将被删的文件
+	confirmLevel3                    // 第三关：最终警告
+)
+
+type deleteConfirmState struct {
+	task  config.Task
+	stage deleteConfirmStage
+	files []string // 远端多余文件列表
 }
 
 // syncProgress tracks current sync state for rendering
@@ -77,11 +104,11 @@ type Model struct {
 	explorer  *explorerModel
 
 	// Sync state
-	syncing         bool
-	sp              syncProgress
-	syncErr         string
-	syncChan        chan syncMsg
-	syncPendingTask *config.Task // delete 确认待处理
+	syncing       bool
+	sp            syncProgress
+	syncErr       string
+	syncChan      chan syncMsg
+	deleteConfirm *deleteConfirmState // 多级 delete 确认
 }
 
 func New(cfg *config.Config, cfgPath string) *Model {
@@ -123,18 +150,51 @@ func (m *Model) listenSync() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Delete 确认待处理 — 拦截所有按键
-	if m.syncPendingTask != nil {
-		if key, ok := msg.(tea.KeyMsg); ok {
-			switch key.String() {
-			case "y":
-				task := *m.syncPendingTask
-				m.syncPendingTask = nil
-				m.startSync(task)
-				return m, nil
-			case "n", "esc", "ctrl+c":
-				m.syncPendingTask = nil
-				return m, nil
+	// Delete 多级确认 — 拦截所有按键
+	if m.deleteConfirm != nil {
+		dc := m.deleteConfirm
+		switch dc.stage {
+		case confirmScan:
+			// 扫描中 — 等待 deletePreviewMsg
+			if pm, ok := msg.(deletePreviewMsg); ok {
+				if pm.err != "" {
+					m.deleteConfirm = nil
+					m.syncErr = pm.err
+					return m, nil
+				}
+				dc.files = pm.files
+				if len(dc.files) == 0 {
+					// 没有多余文件，直接同步
+					m.deleteConfirm = nil
+					m.startSync(dc.task)
+					return m, nil
+				}
+				dc.stage = confirmLevel2
+			}
+			return m, nil
+		case confirmLevel1, confirmLevel2, confirmLevel3:
+			if key, ok := msg.(tea.KeyMsg); ok {
+				switch key.String() {
+				case "y":
+					switch dc.stage {
+					case confirmLevel1:
+						// 第一关通过 → 扫描远端多余文件
+						dc.stage = confirmScan
+						return m, m.startDeleteScan(dc.task)
+					case confirmLevel2:
+						// 第二关 → 最终警告
+						dc.stage = confirmLevel3
+						return m, nil
+					case confirmLevel3:
+						// 第三关 → 真正同步
+						m.deleteConfirm = nil
+						m.startSync(dc.task)
+						return m, nil
+					}
+				case "n", "esc", "ctrl+c":
+					m.deleteConfirm = nil
+					return m, nil
+				}
 			}
 		}
 		return m, nil
@@ -143,7 +203,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle startSyncMsg from any sub-model
 	if sm, ok := msg.(startSyncMsg); ok {
 		if sm.task.Options.Delete {
-			m.syncPendingTask = &sm.task
+			m.deleteConfirm = &deleteConfirmState{
+				task: sm.task, stage: confirmLevel1,
+			}
 			return m, nil
 		}
 		m.startSync(sm.task)
@@ -210,7 +272,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.activePage == PageDashboard && !m.syncing && len(m.cfg.Tasks) > 0 {
 				task := m.cfg.Tasks[m.dashboard.cursor]
-				m.startSync(task)
+				if task.Options.Delete {
+					m.deleteConfirm = &deleteConfirmState{
+						task: task, stage: confirmLevel1,
+					}
+				} else {
+					m.startSync(task)
+				}
 				return m, nil
 			}
 			return m.dispatchUpdate(msg) // other pages: delegate to sub-model
@@ -254,18 +322,53 @@ func (m *Model) View() string {
 		return i18n.T("term.small")
 	}
 
-	// Delete 确认对话框
-	if m.syncPendingTask != nil {
-		task := m.syncPendingTask
-		body := fmt.Sprintf("  %s\n\n  %s: %s\n  %s → %s\n\n  %s\n\n  [Y] %s  [N] %s",
-			StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
-			i18n.T("map.title"), StyleWarning.Render(task.Name),
-			StyleMuted.Render(truncatePath(task.Source, 35)),
-			StyleMuted.Render(truncatePath(task.Target, 35)),
-			StyleDanger.Render(i18n.T("sync.delete_confirm")),
-			StyleSuccess.Render(i18n.T("btn.yes")),
-			StyleMuted.Render(i18n.T("btn.cancel")))
-		return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
+	// Delete 多级确认对话框
+	if m.deleteConfirm != nil {
+		dc := m.deleteConfirm
+		switch dc.stage {
+		case confirmScan:
+			body := fmt.Sprintf("  %s\n\n  🔍 %s...",
+				StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
+				StyleMuted.Render(i18n.T("sync.deleting")))
+			return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
+		case confirmLevel1:
+			body := fmt.Sprintf("  %s\n\n  %s: %s\n  %s → %s\n\n  %s\n\n  [Y] %s  [N] %s",
+				StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
+				i18n.T("map.title"), StyleWarning.Render(dc.task.Name),
+				StyleMuted.Render(truncatePath(dc.task.Source, 35)),
+				StyleMuted.Render(truncatePath(dc.task.Target, 35)),
+				StyleDanger.Render(i18n.T("sync.delete_confirm")),
+				StyleSuccess.Render(i18n.T("btn.yes")),
+				StyleMuted.Render(i18n.T("btn.cancel")))
+			return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
+		case confirmLevel2:
+			var list string
+			maxShow := 20
+			for i, f := range dc.files {
+				if i >= maxShow {
+					list += fmt.Sprintf("  ... %s %d %s\n",
+						StyleMuted.Render("+"), len(dc.files)-maxShow, StyleMuted.Render("more"))
+					break
+				}
+				list += "  " + StyleDanger.Render("✗ "+f) + "\n"
+			}
+			body := fmt.Sprintf("  %s\n\n  %s\n\n%s\n  %s\n\n  [Y] %s  [N] %s",
+				StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
+				fmt.Sprintf(i18n.T("sync.delete_list"), len(dc.files)),
+				list,
+				StyleMuted.Render(i18n.T("sync.delete_confirm")),
+				StyleSuccess.Render(i18n.T("btn.yes")),
+				StyleMuted.Render(i18n.T("btn.cancel")))
+			return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
+		case confirmLevel3:
+			body := fmt.Sprintf("  %s\n\n  %s\n\n  %s\n\n  [Y] %s  [N] %s",
+				StyleTitle.Render("🚨 "+i18n.T("sync.delete_final")),
+				fmt.Sprintf(i18n.T("sync.delete_list"), len(dc.files)),
+				StyleWarning.Render(i18n.T("sync.delete_confirm")),
+				StyleSuccess.Render(i18n.T("sync.delete_yes")),
+				StyleMuted.Render(i18n.T("btn.cancel")))
+			return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
+		}
 	}
 
 	nav := RenderNav(pageNames(), int(m.activePage), m.width)
@@ -449,6 +552,170 @@ func (h *tuiSyncHook) OnFileDone(evt transport.FileEvent) error {
 }
 func (h *tuiSyncHook) OnSyncDone(stats *transport.SyncStats) error {
 	return nil
+}
+
+// startDeleteScan 扫描远端多余文件并返回清单（不执行删除）
+func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
+	return func() tea.Msg {
+		serverName, remotePath := config.ParseTarget(task.Target)
+		if serverName == "" {
+			return deletePreviewMsg{taskName: task.Name, err: i18n.T("sync.no_server")}
+		}
+		srv := m.cfg.GetServer(serverName)
+		if srv == nil {
+			return deletePreviewMsg{taskName: task.Name, err: i18n.T("sync.server_not_found")}
+		}
+
+		sftp := transport.NewSFTP(transport.SFTPConfig{
+			Host: srv.Host, Port: srv.Port,
+			User: srv.User, KeyFile: srv.KeyFile, Pass: srv.Pass,
+		})
+		if err := sftp.Connect(); err != nil {
+			return deletePreviewMsg{taskName: task.Name, err: fmt.Sprintf(i18n.T("sync.connect_err"), err)}
+		}
+		defer sftp.Close()
+
+		// 扫描本地文件（简化版 scanLocalFiles）
+		localFiles, err := scanLocal(task.Source, task.Options.Exclude, true)
+		if err != nil {
+			return deletePreviewMsg{taskName: task.Name, err: fmt.Sprintf("scan local: %v", err)}
+		}
+		if len(localFiles) == 0 {
+			return deletePreviewMsg{taskName: task.Name} // 无本地文件，无需删除
+		}
+
+		// 构建 remote 目录和文件映射
+		remoteDirs := make(map[string]bool)
+		for _, lf := range localFiles {
+			rp, _ := filepath.Rel(task.Source, lf)
+			if rp == "." || rp == "" {
+				rp = filepath.Base(task.Source)
+			} else if info, err := os.Stat(task.Source); err == nil && info.IsDir() && !task.Options.Flat {
+				rp = filepath.Join(filepath.Base(task.Source), rp)
+			}
+			remoteFile := filepath.ToSlash(filepath.Join(remotePath, rp))
+			remoteDirs[filepath.ToSlash(filepath.Dir(remoteFile))] = true
+		}
+
+		remoteFiles := make(map[string]bool)
+		for dir := range remoteDirs {
+			entries, err := sftp.ListDir(dir)
+			if err != nil {
+				continue
+			}
+			for _, f := range entries {
+				if f.IsDir {
+					continue
+				}
+				key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
+				key = strings.TrimPrefix(key, "/")
+				remoteFiles[key] = true
+			}
+		}
+
+		// 收集孤儿文件（远端有但本地没有）
+		var orphans []string
+		for name := range remoteFiles {
+			found := false
+			for _, lf := range localFiles {
+				rp, _ := filepath.Rel(task.Source, lf)
+				if rp == "." || rp == "" {
+					rp = filepath.Base(task.Source)
+				} else if info, err := os.Stat(task.Source); err == nil && info.IsDir() && !task.Options.Flat {
+					rp = filepath.Join(filepath.Base(task.Source), rp)
+				}
+				if filepath.ToSlash(rp) == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				orphans = append(orphans, name)
+			}
+		}
+
+		// 优先列出高危文件（数据库、证书、配置等）
+		sortOrphans(orphans)
+
+		return deletePreviewMsg{taskName: task.Name, files: orphans}
+	}
+}
+
+// scanLocal 扫描本地文件（复用 sync.go 逻辑）
+func scanLocal(root string, excludes []string, skipDots bool) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, _ := filepath.Rel(root, path)
+		for _, p := range excludes {
+			pat := strings.TrimRight(p, "/")
+			if ok, _ := filepath.Match(pat, filepath.Base(path)); ok {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if ok, _ := filepath.Match(pat, relPath); ok {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		if skipDots && strings.HasPrefix(filepath.Base(path), ".") && path != root {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if len(files) == 0 && err == nil {
+		if info, stErr := os.Stat(root); stErr == nil && !info.IsDir() {
+			files = append(files, root)
+		}
+	}
+	return files, err
+}
+
+// highRiskExts 高危文件扩展名，优先显示在删除清单前部
+var highRiskExts = []string{
+	".db", ".sql", ".sqlite", ".sqlite3", ".mdb", ".myd", ".myi", ".frm", ".ibd",
+	".key", ".pem", ".crt", ".cert", ".p12", ".pfx", ".jks", ".keystore",
+	".conf", ".cfg", ".ini", ".yaml", ".yml", ".json", ".toml", ".env",
+	".service", ".timer", ".socket", ".target",
+	".bak", ".backup", ".tar", ".gz", ".bz2", ".xz", ".7z", ".zip", ".rar",
+}
+
+// sortOrphans 把高危文件（数据库/密钥/配置）排到列表最前面
+func sortOrphans(files []string) {
+	// 简单冒泡：高危文件沉到前面
+	high := func(name string) int {
+		ext := strings.ToLower(filepath.Ext(name))
+		base := strings.ToLower(filepath.Base(name))
+		for _, h := range highRiskExts {
+			if ext == h || base == h[1:] { // h[1:] 去掉 . 匹配无扩展名文件
+				return 1
+			}
+		}
+		// 无扩展名也可能是重要文件
+		if ext == "" {
+			return 0
+		}
+		return -1
+	}
+	for i := 0; i < len(files); i++ {
+		for j := i + 1; j < len(files); j++ {
+			if high(files[i]) < high(files[j]) {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
 }
 
 func Run(cfg *config.Config, cfgPath string) error {
