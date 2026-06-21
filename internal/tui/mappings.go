@@ -114,7 +114,7 @@ func (m *mappingsModel) View(width, height int) string {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 func (m *mappingsModel) saveConfig() {
-	_ = m.cfg.Save(m.cfgPath)
+	saveConfig(m.cfg, m.cfgPath)
 }
 
 // hasStr reports whether s is present in list.

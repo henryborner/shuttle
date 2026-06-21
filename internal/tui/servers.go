@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,10 +46,9 @@ type serversModel struct {
 	adding  bool
 	editIdx int
 	// form
-	formHost, formUser, formKey string
-	formPort                    int
-	formName                    string
-	formField                   int
+	formHost, formUser, formKey, formPortStr string
+	formName                                  string
+	formField                                 int
 	// test & deploy
 	testStatus testStatus
 	testMsg    string
@@ -56,7 +56,7 @@ type serversModel struct {
 }
 
 func newServers(cfg *config.Config, cfgPath string) *serversModel {
-	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPort: 22}
+	return &serversModel{cfg: cfg, servers: cfg.Servers, cfgPath: cfgPath, formPortStr: "22"}
 }
 
 func (m *serversModel) Init() tea.Cmd { return nil }
@@ -87,7 +87,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			s := m.servers[m.cursor]
 			m.formName, m.formHost = s.Name, s.Host
 			m.formUser, m.formKey = s.User, s.KeyFile
-			m.formPort = s.Port
+			m.formPortStr = fmt.Sprintf("%d", s.Port)
 			m.formField = 0
 			m.testStatus = testNone
 			m.deployed = false
@@ -107,7 +107,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 func (m *serversModel) resetForm() {
 	m.adding = true
 	m.formName, m.formHost, m.formUser, m.formKey = "", "", "", ""
-	m.formPort = 22
+	m.formPortStr = "22"
 	m.formField = 0
 	m.testStatus = testNone
 	m.testMsg = ""
@@ -178,7 +178,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 // asyncTest runs the connection test in a goroutine, returns result via message
 func (m *serversModel) asyncTest(signer ssh.Signer) tea.Cmd {
 	host := m.formHost
-	port := m.formPort
+	port, _ := strconv.Atoi(m.formPortStr)
 	user := m.formUser
 
 	return func() tea.Msg {
@@ -208,7 +208,7 @@ func (m *serversModel) asyncTest(signer ssh.Signer) tea.Cmd {
 // asyncDeploy runs deployment in a goroutine
 func (m *serversModel) asyncDeploy(signer ssh.Signer) tea.Cmd {
 	host := m.formHost
-	port := m.formPort
+	port, _ := strconv.Atoi(m.formPortStr)
 	user := m.formUser
 
 	return func() tea.Msg {
@@ -260,10 +260,14 @@ func (m *serversModel) asyncDeploy(signer ssh.Signer) tea.Cmd {
 }
 
 func (m *serversModel) saveServer() {
+	port, _ := strconv.Atoi(m.formPortStr)
+	if port <= 0 {
+		port = 22
+	}
 	s := config.Server{
 		Name:    strings.TrimSpace(m.formName),
 		Host:    strings.TrimSpace(m.formHost),
-		Port:    m.formPort,
+		Port:    port,
 		User:    strings.TrimSpace(m.formUser),
 		KeyFile: strings.TrimSpace(strings.TrimRight(m.formKey, "\x00")),
 	}
@@ -281,6 +285,8 @@ func (m *serversModel) appendField(ch string) {
 		m.formName += ch
 	case 1:
 		m.formHost += ch
+	case 2:
+		m.formPortStr += ch
 	case 3:
 		m.formUser += ch
 	case 4:
@@ -297,6 +303,10 @@ func (m *serversModel) backspaceField() {
 	case 1:
 		if len(m.formHost) > 0 {
 			m.formHost = m.formHost[:len(m.formHost)-1]
+		}
+	case 2:
+		if len(m.formPortStr) > 0 {
+			m.formPortStr = m.formPortStr[:len(m.formPortStr)-1]
 		}
 	case 3:
 		if len(m.formUser) > 0 {
@@ -339,7 +349,7 @@ func (m *serversModel) formView(width, height int) string {
 		i18n.T("srv.name_hint"), i18n.T("srv.host_hint"),
 		i18n.T("srv.port_hint"), i18n.T("srv.user_hint"), i18n.T("srv.key_hint"),
 	}
-	vals := []string{m.formName, m.formHost, fmt.Sprintf("%d", m.formPort), m.formUser, m.formKey}
+	vals := []string{m.formName, m.formHost, m.formPortStr, m.formUser, m.formKey}
 
 	body := StyleTitle.Render("📝 "+i18n.T("srv.add")) + "\n\n"
 	for i, f := range fields {
@@ -374,5 +384,5 @@ func (m *serversModel) formView(width, height int) string {
 
 func (m *serversModel) saveConfig() {
 	m.cfg.Servers = m.servers
-	_ = m.cfg.Save(m.cfgPath)
+	saveConfig(m.cfg, m.cfgPath)
 }

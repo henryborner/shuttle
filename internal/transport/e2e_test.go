@@ -15,6 +15,11 @@ import (
 )
 
 func sshClient(t *testing.T) *ssh.Client {
+	t.Helper()
+	host := os.Getenv("SHUTTLE_TEST_HOST")
+	if host == "" {
+		t.Skip("SHUTTLE_TEST_HOST not set")
+	}
 	home, _ := os.UserHomeDir()
 	keyPath := filepath.Join(home, ".ssh", "id_ed25519")
 	key, err := os.ReadFile(keyPath)
@@ -30,7 +35,7 @@ func sshClient(t *testing.T) *ssh.Client {
 		User: "root", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	c, err := ssh.Dial("tcp", "8.166.136.113:22", cfg)
+	c, err := ssh.Dial("tcp", host+":22", cfg)
 	if err != nil {
 		t.Skipf("SSH: %v", err)
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/henryborner/shuttle/internal/config"
@@ -106,7 +107,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	m.syncChan = make(chan syncMsg, 10)
+		m.syncChan = make(chan syncMsg, 100)
 	return m.listenSync()
 }
 
@@ -364,7 +365,7 @@ func (m *Model) startSync(task config.Task) {
 		stats, err := engine.Sync(transport.SyncOptions{
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
-			Checksum: task.Options.Checksum,
+			Checksum: task.Options.Checksum, SkipDots: true,
 		})
 
 		if err != nil {
@@ -419,4 +420,11 @@ func Run(cfg *config.Config, cfgPath string) error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
+}
+
+// saveConfig saves the configuration and logs any errors (best-effort).
+func saveConfig(cfg *config.Config, path string) {
+	if err := cfg.Save(path); err != nil {
+		log.Printf("config save: %v", err)
+	}
 }

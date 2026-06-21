@@ -64,12 +64,15 @@ func (m *settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 				i18n.SetLang(i18n.ZH)
 				m.cfg.Language = "zh"
 			}
-			_ = m.cfg.Save(m.cfgPath)
+			saveConfig(m.cfg, m.cfgPath)
 		case 1:
+			if len(m.algoOpts) == 0 {
+				break
+			}
 			m.algoIdx = (m.algoIdx + 1) % len(m.algoOpts)
 			delta.SetDefault(m.algoOpts[m.algoIdx])
 			m.cfg.Checksum = m.algoOpts[m.algoIdx]
-			_ = m.cfg.Save(m.cfgPath)
+			saveConfig(m.cfg, m.cfgPath)
 		}
 	}
 	return *m, nil

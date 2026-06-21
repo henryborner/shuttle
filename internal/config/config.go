@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -102,6 +103,12 @@ func (c *Config) GetServer(name string) *Server {
 }
 
 func ParseTarget(target string) (serverName, path string) {
+	// IPv6 address in brackets: [::1]:/path or [::1]:path
+	if strings.HasPrefix(target, "[") {
+		if idx := strings.IndexByte(target, ']'); idx > 0 && idx+1 < len(target) && target[idx+1] == ':' {
+			return target[:idx+1], target[idx+2:]
+		}
+	}
 	for i := 0; i < len(target); i++ {
 		if target[i] == ':' && i > 0 && target[i-1] != '\\' && i < len(target)-1 && target[i+1] != '\\' {
 			return target[:i], target[i+1:]

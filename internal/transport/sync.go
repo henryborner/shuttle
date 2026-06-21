@@ -13,12 +13,13 @@ import (
 )
 
 type SyncOptions struct {
-	Source   string
-	Target   string
-	Delete   bool
-	Exclude  []string
-	Checksum bool
-	DryRun   bool
+	Source    string
+	Target    string
+	Delete    bool
+	Exclude   []string
+	Checksum  bool
+	DryRun    bool
+	SkipDots  bool // skip files/dirs starting with "." (default true for safety)
 }
 
 type SyncStats struct {
@@ -48,7 +49,7 @@ func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 // Sync 执行同步
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	stats := &SyncStats{}
-	localFiles, err := scanLocalFiles(opts.Source, opts.Exclude)
+	localFiles, err := scanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
 	if err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
@@ -189,19 +190,19 @@ func (p *progressReader) Read(b []byte) (int, error) {
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
 	newData, err := os.ReadFile(info.Path)
 	if err != nil {
-		return info.Size, 0, fmt.Errorf("read local: %w", err)
+		return 0, 0, fmt.Errorf("read local: %w", err)
 	}
 
 	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive %s", remotePath)
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
-		return info.Size, 0, e.uploadFile(info, remotePath) // fallback
+		return 0, 0, e.uploadFile(info, remotePath) // fallback
 	}
 
 	sig, err := delta.WireDecodeSignature(stdout)
 	stdout.Close() // release SSH session resources
 	if err != nil {
-		return info.Size, 0, fmt.Errorf("recv sig: %w", err)
+		return 0, 0, fmt.Errorf("recv sig: %w", err)
 	}
 
 	algo := delta.GetDefault()
@@ -211,13 +212,13 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
-		return info.Size, 0, fmt.Errorf("send inst: %w", err)
+		return 0, 0, fmt.Errorf("send inst: %w", err)
 	}
 	stdin.Close()
 
 	errOut, _ := io.ReadAll(stderr)
 	if len(errOut) > 0 {
-		return info.Size, 0, fmt.Errorf("remote: %s", string(errOut))
+		return 0, 0, fmt.Errorf("remote: %s", string(errOut))
 	}
 
 	savedBytes = int64(len(newData)) - eng.LiteralBytes
@@ -231,7 +232,7 @@ type localFileInfo struct {
 	IsDir   bool
 }
 
-func scanLocalFiles(root string, excludes []string) ([]localFileInfo, error) {
+func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileInfo, error) {
 	var files []localFileInfo
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -252,7 +253,7 @@ func scanLocalFiles(root string, excludes []string) ([]localFileInfo, error) {
 				return nil
 			}
 		}
-		if strings.HasPrefix(filepath.Base(path), ".") && path != root {
+		if skipDots && strings.HasPrefix(filepath.Base(path), ".") && path != root {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
