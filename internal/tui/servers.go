@@ -68,6 +68,12 @@ func (m *serversModel) Init() tea.Cmd { return nil }
 func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	// Delete confirmation pending.
 	if m.deleteIdx >= 0 {
+		// Still handle deploy/update results so they don't leak later
+		if dr, ok := msg.(deployResultMsg); ok {
+			m.deployed = dr.ok
+			m.testMsg = dr.msg
+			return *m, nil
+		}
 		key, ok := msg.(tea.KeyMsg)
 		if !ok {
 			return *m, nil
