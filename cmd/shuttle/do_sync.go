@@ -64,7 +64,6 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 		sftp := transport.NewSFTP(transport.SFTPConfig{
 			Host: server.Host, Port: server.Port,
 			User: server.User, KeyFile: server.KeyFile, Pass: server.Pass,
-			AgentPath: server.AgentPath,
 		})
 
 		if err := sftp.Connect(); err != nil {

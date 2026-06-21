@@ -459,13 +459,9 @@ func tryRemoveRemoteAgent(srv config.Server) {
 		return
 	}
 	defer client.Close()
-	agentPath := srv.AgentPath
-	if agentPath == "" {
-		agentPath = config.DefaultAgentPath
-	}
 	session, _ := client.NewSession()
 	if session != nil {
-		session.Run("rm -f " + agentPath)
+		session.Run("rm -f /usr/local/bin/shuttle ~/shuttle")
 		session.Close()
 	}
 }

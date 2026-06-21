@@ -14,15 +14,14 @@ import (
 )
 
 type SyncOptions struct {
-	Source    string
-	Target    string
-	Delete    bool
-	Exclude   []string
-	Checksum  bool
-	DryRun    bool
-	SkipDots  bool   // skip files/dirs starting with "." (default true for safety)
-	Workers   int    // delta并行数，0默认=4，1=串行
-	AgentPath string // 远端 shuttle 路径, 默认 /usr/local/bin/shuttle
+	Source   string
+	Target   string
+	Delete   bool
+	Exclude  []string
+	Checksum bool
+	DryRun   bool
+	SkipDots bool // skip files/dirs starting with "." (default true for safety)
+	Workers  int  // delta并行数，0默认=4，1=串行
 }
 
 type SyncStats struct {
@@ -41,7 +40,6 @@ type SyncStats struct {
 type SyncEngine struct {
 	transport Transport
 	hook      SyncHook
-	agentPath string // cached from SyncOptions for uploadFileDelta
 }
 
 func NewSyncEngine(tr Transport) *SyncEngine {
@@ -52,10 +50,6 @@ func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 
 // Sync 执行同步
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
-	e.agentPath = opts.AgentPath
-	if e.agentPath == "" {
-		e.agentPath = "/usr/local/bin/shuttle"
-	}
 	stats := &SyncStats{}
 	localFiles, err := scanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
 	if err != nil {
@@ -270,7 +264,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		localDone <- localResult{d, e}
 	}()
 
-	cmd := fmt.Sprintf("%s receive '%s'", e.agentPath, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	cmd := fmt.Sprintf("shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		<-localDone

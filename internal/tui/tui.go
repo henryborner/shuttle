@@ -349,7 +349,6 @@ func (m *Model) startSync(task config.Task) {
 		sftp := transport.NewSFTP(transport.SFTPConfig{
 			Host: srv.Host, Port: srv.Port,
 			User: srv.User, KeyFile: srv.KeyFile, Pass: srv.Pass,
-			AgentPath: srv.AgentPath,
 		})
 		if err := sftp.Connect(); err != nil {
 			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf(i18n.T("sync.connect_err"), err)}
@@ -366,7 +365,7 @@ func (m *Model) startSync(task config.Task) {
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
 			Checksum: task.Options.Checksum, SkipDots: true,
-			Workers: m.cfg.Workers, AgentPath: srv.AgentPath,
+			Workers: m.cfg.Workers,
 		})
 
 		if err != nil {
