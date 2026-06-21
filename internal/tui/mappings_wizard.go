@@ -281,10 +281,6 @@ func (w *mappingsWizard) handleStepServer(key string) {
 }
 
 func (w *mappingsWizard) handleStepRemote(key string) {
-	if key == "ctrl+b" && w.serverIdx < len(w.cfg.Servers) {
-		w.remoteBrowser = NewRemoteBrowser(w.cfg.Servers[w.serverIdx])
-		return
-	}
 	w.handleTextInput(key, func() {
 		if w.serverIdx < len(w.cfg.Servers) {
 			w.wipTask.Target = w.cfg.Servers[w.serverIdx].Name + ":" + w.inputBuf
