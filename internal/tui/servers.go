@@ -75,8 +75,10 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		switch key.String() {
 		case "y":
 			if m.deleteIdx < len(m.servers) {
+				srvName := m.servers[m.deleteIdx].Name
 				m.servers = append(m.servers[:m.deleteIdx], m.servers[m.deleteIdx+1:]...)
 				m.cursor = clamp(m.cursor, len(m.servers)-1)
+				removeTasksForServer(m.cfg, srvName)
 				m.saveConfig()
 			}
 			m.deleteIdx = -1
@@ -85,8 +87,8 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 				srv := m.servers[m.deleteIdx]
 				m.servers = append(m.servers[:m.deleteIdx], m.servers[m.deleteIdx+1:]...)
 				m.cursor = clamp(m.cursor, len(m.servers)-1)
+				removeTasksForServer(m.cfg, srv.Name)
 				m.saveConfig()
-				// 异步尝试连接远端删除 agent
 				go tryRemoveRemoteAgent(srv)
 			}
 			m.deleteIdx = -1
@@ -489,6 +491,18 @@ func (m *serversModel) formView(width, height int) string {
 func (m *serversModel) saveConfig() {
 	m.cfg.Servers = m.servers
 	saveConfig(m.cfg, m.cfgPath)
+}
+
+// removeTasksForServer removes all tasks that target a given server.
+func removeTasksForServer(cfg *config.Config, serverName string) {
+	filtered := cfg.Tasks[:0]
+	for _, t := range cfg.Tasks {
+		srv, _ := config.ParseTarget(t.Target)
+		if srv != serverName {
+			filtered = append(filtered, t)
+		}
+	}
+	cfg.Tasks = filtered
 }
 
 // tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
