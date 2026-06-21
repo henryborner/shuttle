@@ -127,6 +127,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 			m.cursor++
 		}
 	case "a":
+		m.testMsg = ""
 		m.resetForm()
 	case "e", "enter":
 		if m.cursor < len(m.servers) {
@@ -144,6 +145,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	case "d":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
+			m.testMsg = "" // 清旧消息
 			m.deleteIdx = m.cursor
 		}
 	case "u":
