@@ -46,7 +46,7 @@ func (rb *RemoteBrowser) connect() {
 	cfg := &ssh.ClientConfig{
 		User:            rb.server.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: util.CheckHostKey(),
 		Timeout:         8 * time.Second,
 	}
 	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", rb.server.Host, rb.server.Port), cfg)

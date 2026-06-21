@@ -77,7 +77,7 @@ func (t *SFTPTransport) Connect() error {
 	sshConfig := &ssh.ClientConfig{
 		User:            t.cfg.User,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: util.CheckHostKey(),
 		Timeout:         10 * time.Second,
 	}
 

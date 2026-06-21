@@ -128,7 +128,7 @@ func (em *explorerModel) connectRemote(srv config.Server) {
 	}
 	cfg := &ssh.ClientConfig{
 		User: srv.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 8 * time.Second,
+		HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 	}
 	addr := fmt.Sprintf("%s:%d", srv.Host, srv.Port)
 	client, err := ssh.Dial("tcp", addr, cfg)

@@ -184,7 +184,7 @@ func (m *serversModel) asyncTest(signer ssh.Signer) tea.Cmd {
 	return func() tea.Msg {
 		cfg := &ssh.ClientConfig{
 			User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 8 * time.Second,
+			HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 		}
 		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
 		if err != nil {
@@ -214,7 +214,7 @@ func (m *serversModel) asyncDeploy(signer ssh.Signer) tea.Cmd {
 	return func() tea.Msg {
 		cfg := &ssh.ClientConfig{
 			User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second,
+			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
 		}
 		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
 		if err != nil {
