@@ -497,7 +497,7 @@ func (m *serversModel) formView(width, height int) string {
 		body += "\n  " + StyleDanger.Render(m.testMsg)
 	}
 
-	body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+"  [Enter] "+i18n.T("btn.save")+"  "+i18n.T("help.form"))
+	body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+"  "+i18n.T("help.form"))
 
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
