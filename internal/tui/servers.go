@@ -223,6 +223,9 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 	host := m.formHost
 	port, _ := strconv.Atoi(m.formPortStr)
+	if port <= 0 {
+		port = 22
+	}
 	user := m.formUser
 
 	return func() tea.Msg {
@@ -260,6 +263,9 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 	host := m.formHost
 	port, _ := strconv.Atoi(m.formPortStr)
+	if port <= 0 {
+		port = 22
+	}
 	user := m.formUser
 
 	return func() tea.Msg {
