@@ -201,7 +201,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 			} else {
 				agentInfo = " | " + StyleWarning.Render(i18n.T("srv.no_agent"))
 			}
-			m.testMsg = fmt.Sprintf("%s %s  OS: %s%s", IconOK, i18n.T("srv.test_ok"), tr.osName, agentInfo)
+			m.testMsg = fmt.Sprintf("%s %s  OS: %s%s", IconOK, i18n.T("srv.test_ok"), strings.TrimSpace(tr.osName), agentInfo)
 		} else {
 			m.testStatus = testFail
 			m.testMsg = tr.msg
