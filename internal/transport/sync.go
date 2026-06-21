@@ -190,25 +190,35 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// uploadFileDelta rsync式增量传输：
-
+// uploadFileDelta rsync式增量传输：读取远端旧文件签名 → delta匹配 → 推送指令。
+// 如果增量流程失败（如远端未部署 shuttle），自动 fallback 到全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
 	newData, err := os.ReadFile(info.Path)
 	if err != nil {
 		return 0, 0, fmt.Errorf("read local: %w", err)
 	}
 
-	// shellQuote wraps a path in single quotes, escaping any embedded quotes.
 	cmd := fmt.Sprintf("/usr/local/bin/shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
-		return 0, 0, e.uploadFile(info, remotePath) // fallback
+		return 0, 0, e.uploadFile(info, remotePath) // fallback: 全量上传
 	}
 
+	// 并发读取 stderr，避免死锁
+	var errBuf strings.Builder
+	stderrDone := make(chan struct{})
+	go func() {
+		io.Copy(&errBuf, stderr)
+		close(stderrDone)
+	}()
+
 	sig, err := delta.WireDecodeSignature(stdout)
-	stdout.Close() // release SSH session resources
+	stdout.Close()
+	<-stderrDone // 等待 stderr 读取完毕
 	if err != nil {
-		return 0, 0, fmt.Errorf("recv sig: %w", err)
+		// 增量失败 → fallback 全量上传
+		stdin.Close()
+		return 0, 0, e.uploadFile(info, remotePath)
 	}
 
 	algo := delta.GetDefault()
@@ -218,13 +228,12 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
-		return 0, 0, fmt.Errorf("send inst: %w", err)
+		return 0, 0, e.uploadFile(info, remotePath) // fallback
 	}
 	stdin.Close()
 
-	errOut, _ := io.ReadAll(stderr)
-	if len(errOut) > 0 {
-		return 0, 0, fmt.Errorf("remote: %s", string(errOut))
+	if errBuf.Len() > 0 {
+		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
 
 	savedBytes = int64(len(newData)) - eng.LiteralBytes
