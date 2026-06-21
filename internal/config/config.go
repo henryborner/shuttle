@@ -26,13 +26,17 @@ type Options struct {
 }
 
 type Server struct {
-	Name    string `yaml:"name"`
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port"`
-	User    string `yaml:"user"`
-	KeyFile string `yaml:"key_file"` // SSH 私钥路径
-	Pass    string `yaml:"password"` // 或密码（不推荐）
+	Name      string `yaml:"name"`
+	Host      string `yaml:"host"`
+	Port      int    `yaml:"port"`
+	User      string `yaml:"user"`
+	KeyFile   string `yaml:"key_file"`   // SSH 私钥路径
+	Pass      string `yaml:"password"`   // 或密码（不推荐）
+	AgentPath string `yaml:"agent_path"` // 远端 agent 路径, 默认 /usr/local/bin/shuttle
 }
+
+// DefaultAgentPath is the default remote binary location.
+const DefaultAgentPath = "/usr/local/bin/shuttle"
 
 // Config 顶层配置
 type Config struct {

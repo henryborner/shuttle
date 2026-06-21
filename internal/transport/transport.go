@@ -36,11 +36,20 @@ type Transport interface {
 
 // SFTPConfig holds SFTP connection parameters
 type SFTPConfig struct {
-	Host    string
-	Port    int
-	User    string
-	KeyFile string
-	Pass    string
+	Host      string
+	Port      int
+	User      string
+	KeyFile   string
+	Pass      string
+	AgentPath string // remote shuttle binary path
+}
+
+// AgentBin returns the configured agent path, defaulting to /usr/local/bin/shuttle.
+func (c SFTPConfig) AgentBin() string {
+	if c.AgentPath != "" {
+		return c.AgentPath
+	}
+	return "/usr/local/bin/shuttle"
 }
 
 // SFTPTransport implements Transport over SFTP

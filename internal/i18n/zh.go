@@ -117,7 +117,7 @@ func init() {
 		"srv.deployed":    "部署成功！",
 		"srv.not_found":   "未找到 shuttle_linux",
 		"srv.deploy_hint": "[Enter] 立即部署 shuttle agent",
-		"srv.must_test":   "请先 [Ctrl+T] 测试连接成功后再保存",		"srv.delete_agent": "删除并清理远端 agent",		"srv.key_err":     "密钥: %v",
+		"srv.must_test":   "请先 [Ctrl+T] 测试连接成功后再保存", "srv.delete_agent": "删除并清理远端 agent", "srv.key_err": "密钥: %v",
 		"srv.empty_auth":  " 请至少填写密钥或密码",
 		"srv.parse_err":   "解析: %v",
 		"srv.connect_err": "连接: %v",
