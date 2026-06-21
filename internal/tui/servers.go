@@ -245,7 +245,7 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 			User: user, Auth: authMethods,
 			HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 		}
-		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
+		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(host), port), cfg)
 		if err != nil {
 			return testResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.connect_err"), err)}
 		}
@@ -285,7 +285,7 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 			User: user, Auth: authMethods,
 			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
 		}
-		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
+		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(host), port), cfg)
 		if err != nil {
 			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.deploy_err"), err)}
 		}
@@ -544,7 +544,7 @@ func asyncUpdateAgent(srv config.Server) tea.Cmd {
 			User: srv.User, Auth: authMethods,
 			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
 		}
-		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", srv.Host, port), cfg)
+		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), port), cfg)
 		if err != nil {
 			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.deploy_err"), err)}
 		}
@@ -611,7 +611,7 @@ func tryRemoveRemoteAgent(srv config.Server) {
 		User: srv.User, Auth: authMethods,
 		HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 	}
-	addr := fmt.Sprintf("%s:%d", srv.Host, srv.Port)
+	addr := fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), srv.Port)
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
 		return
