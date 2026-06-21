@@ -283,8 +283,8 @@ func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 
 		// Try default system path first, then home dir as non-root fallback
 		deployPaths := []struct {
-			path    string
-			cmd     string
+			path string
+			cmd  string
 		}{
 			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
 			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},

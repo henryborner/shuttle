@@ -125,8 +125,8 @@ func init() {
 		"srv.session_err": "Session: %v",
 		"srv.os_err":      "OS: %v",
 		"srv.stdin_err":   "Stdin: %v",
-		"srv.deploy_err":  "Deploy: %v",		"srv.manual_install": "Manual: scp shuttle_linux user@host:~/ && ssh host chmod +x ~/shuttle",		"srv.read_err":    "Read: %v",
-		"srv.verify_err":  "Verify: %v",
+		"srv.deploy_err":  "Deploy: %v", "srv.manual_install": "Manual: scp shuttle_linux user@host:~/ && ssh host chmod +x ~/shuttle", "srv.read_err": "Read: %v",
+		"srv.verify_err": "Verify: %v",
 
 		// Settings
 		"set.title":       "Settings",
