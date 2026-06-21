@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -42,12 +43,31 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
+			// If the key is passphrase-protected, try with empty passphrase.
+			if strings.Contains(err.Error(), "passphrase") || strings.Contains(err.Error(), "encrypted") {
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte{})
+			}
+		}
+		if err != nil {
 			lastErr = err
 			continue
 		}
 		return signer, nil
 	}
 	return nil, fmt.Errorf("无法读取 SSH 密钥: %w", lastErr)
+}
+
+// BuildAuthMethods builds SSH auth methods from configured key + optional password.
+func BuildAuthMethods(keyPath, password string) []ssh.AuthMethod {
+	var methods []ssh.AuthMethod
+	signer, err := ReadSSHKey(keyPath)
+	if err == nil {
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
+	if password != "" {
+		methods = append(methods, ssh.Password(password))
+	}
+	return methods
 }
 
 // CheckHostKey returns an ssh.HostKeyCallback that verifies the host key

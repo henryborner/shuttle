@@ -59,17 +59,7 @@ func NewSFTP(cfg SFTPConfig) *SFTPTransport {
 
 // Connect establishes an SFTP connection
 func (t *SFTPTransport) Connect() error {
-	var authMethods []ssh.AuthMethod
-
-	signer, err := util.ReadSSHKey(t.cfg.KeyFile)
-	if err == nil {
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
-	}
-
-	if t.cfg.Pass != "" {
-		authMethods = append(authMethods, ssh.Password(t.cfg.Pass))
-	}
-
+	authMethods := util.BuildAuthMethods(t.cfg.KeyFile, t.cfg.Pass)
 	if len(authMethods) == 0 {
 		return fmt.Errorf("no auth method available")
 	}

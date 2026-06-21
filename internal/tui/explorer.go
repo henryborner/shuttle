@@ -120,14 +120,14 @@ func (em *explorerModel) connectRemote(srv config.Server) {
 		em.remoteBrowser = nil
 	}
 
-	signer, err := util.ReadSSHKey(srv.KeyFile)
-	if err != nil {
+	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
+	if len(authMethods) == 0 {
 		em.msg = i18n.T("explorer.no_key")
 		em.msgType = "err"
 		return
 	}
 	cfg := &ssh.ClientConfig{
-		User: srv.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		User: srv.User, Auth: authMethods,
 		HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 	}
 	addr := fmt.Sprintf("%s:%d", srv.Host, srv.Port)

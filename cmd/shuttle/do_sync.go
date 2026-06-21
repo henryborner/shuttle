@@ -16,6 +16,10 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 		fmt.Fprintf(os.Stderr, "❌ 加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 配置无效: %v\n", err)
+		os.Exit(1)
+	}
 
 	var tasks []config.Task
 	if taskName != "" {

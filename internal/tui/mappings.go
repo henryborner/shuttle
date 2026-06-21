@@ -77,7 +77,7 @@ func (m *mappingsModel) Update(msg tea.Msg) (mappingsModel, tea.Cmd) {
 		}
 	case "a":
 		m.wizard = newMappingsWizard(m.cfg, m.cfgPath)
-	case "e":
+	case "e", "enter":
 		if m.cursor < len(m.cfg.Tasks) {
 			w := newMappingsWizard(m.cfg, m.cfgPath)
 			w.initForEdit(m.cursor)
@@ -136,7 +136,7 @@ func (m *mappingsModel) View(width, height int) string {
 				cur, t.Name, StyleMuted.Render(src), StyleMuted.Render(dst), StyleMuted.Render(opts))
 		}
 	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  "+i18n.T("help.edit")+"  "+i18n.T("help.delete")+"  [R] "+i18n.T("map.run")+"  "+i18n.T("help.nav"))
+	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("map.edit")+"  "+i18n.T("help.delete")+"  [R] "+i18n.T("map.run")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 

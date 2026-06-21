@@ -329,6 +329,10 @@ func (m *Model) startSync(task config.Task) {
 	m.sp = syncProgress{taskName: task.Name}
 
 	go func() {
+		if err := m.cfg.Validate(); err != nil {
+			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf("config invalid: %v", err)}
+			return
+		}
 		serverName, remotePath := config.ParseTarget(task.Target)
 		if serverName == "" {
 			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: i18n.T("sync.no_server")}

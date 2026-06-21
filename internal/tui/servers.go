@@ -102,7 +102,7 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 		}
 	case "a":
 		m.resetForm()
-	case "e":
+	case "e", "enter":
 		if m.cursor < len(m.servers) {
 			m.adding = true
 			m.editIdx = m.cursor
@@ -163,12 +163,12 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "enter":
 		if m.testStatus == testOK && !m.deployed {
 			m.testMsg = i18n.T("srv.deploying")
-			signer, err := util.ReadSSHKey(m.formKey)
-			if err != nil {
-				m.testMsg = fmt.Sprintf(i18n.T("srv.key_err"), err)
+			authMethods := util.BuildAuthMethods(m.formKey, "")
+			if len(authMethods) == 0 {
+				m.testMsg = i18n.T("srv.key_err")
 				return *m, nil
 			}
-			return *m, m.asyncDeploy(signer)
+			return *m, m.asyncDeploy(authMethods)
 		}
 		m.saveServer()
 		m.saveConfig()
@@ -176,13 +176,13 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "ctrl+t":
 		m.testStatus = testTesting
 		m.testMsg = i18n.T("srv.testing")
-		signer, err := util.ReadSSHKey(m.formKey)
-		if err != nil {
+		authMethods := util.BuildAuthMethods(m.formKey, "")
+		if len(authMethods) == 0 {
 			m.testStatus = testFail
-			m.testMsg = fmt.Sprintf(i18n.T("srv.key_err"), err)
+			m.testMsg = i18n.T("srv.key_err")
 			return *m, nil
 		}
-		return *m, m.asyncTest(signer)
+		return *m, m.asyncTest(authMethods)
 	case "backspace":
 		m.backspaceField()
 	default:
@@ -194,14 +194,14 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 }
 
 // asyncTest runs the connection test in a goroutine, returns result via message
-func (m *serversModel) asyncTest(signer ssh.Signer) tea.Cmd {
+func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 	host := m.formHost
 	port, _ := strconv.Atoi(m.formPortStr)
 	user := m.formUser
 
 	return func() tea.Msg {
 		cfg := &ssh.ClientConfig{
-			User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			User: user, Auth: authMethods,
 			HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
 		}
 		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
@@ -224,14 +224,14 @@ func (m *serversModel) asyncTest(signer ssh.Signer) tea.Cmd {
 }
 
 // asyncDeploy runs deployment in a goroutine
-func (m *serversModel) asyncDeploy(signer ssh.Signer) tea.Cmd {
+func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
 	host := m.formHost
 	port, _ := strconv.Atoi(m.formPortStr)
 	user := m.formUser
 
 	return func() tea.Msg {
 		cfg := &ssh.ClientConfig{
-			User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			User: user, Auth: authMethods,
 			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
 		}
 		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), cfg)
@@ -367,7 +367,7 @@ func (m *serversModel) View(width, height int) string {
 				StyleMuted.Render("🔑 "+truncatePath(s.KeyFile, 20)), agent)
 		}
 	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  "+i18n.T("help.edit")+"  "+i18n.T("help.delete")+"  "+i18n.T("help.nav"))
+	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 

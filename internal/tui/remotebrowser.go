@@ -37,15 +37,15 @@ func NewRemoteBrowser(srv config.Server) *RemoteBrowser {
 }
 
 func (rb *RemoteBrowser) connect() {
-	signer, err := util.ReadSSHKey("")
-	if err != nil {
-		rb.errMsg = fmt.Sprintf(i18n.T("remote.key_err"), err)
+	authMethods := util.BuildAuthMethods(rb.server.KeyFile, rb.server.Pass)
+	if len(authMethods) == 0 {
+		rb.errMsg = fmt.Sprintf(i18n.T("remote.key_err"), fmt.Errorf("no auth method"))
 		return
 	}
 
 	cfg := &ssh.ClientConfig{
 		User:            rb.server.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            authMethods,
 		HostKeyCallback: util.CheckHostKey(),
 		Timeout:         8 * time.Second,
 	}
