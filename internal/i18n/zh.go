@@ -120,6 +120,7 @@ func init() {
 		"srv.updating":     "⏳ 更新中...",
 		"srv.update_hint":  "[U] 更新远端 agent",
 		"srv.update_short": "更新 agent",
+		"srv.update_confirm": "确认更新远端 agent？",
 		"srv.no_agent":     "未检测到 shuttle agent",
 		"srv.must_test":    "请先 [Ctrl+T] 测试连接成功后再保存", "srv.delete_agent": "删除并清理远端 agent", "srv.key_err": "密钥: %v",
 		"srv.empty_auth": " 请至少填写密钥或密码", "srv.edit_mode": "编辑模式 — 请重新 [Ctrl+T] 测试连接", "srv.parse_err": "解析: %v",

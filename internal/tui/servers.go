@@ -461,7 +461,7 @@ func (m *serversModel) View(width, height int) string {
 		srvName := m.servers[m.updateIdx].Name
 		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
 			StyleTitle.Render("⬆ "+i18n.T("srv.update_short")),
-			StyleWarning.Render("确认更新远端 agent？"),
+			StyleWarning.Render(i18n.T("srv.update_confirm")),
 			StyleWarning.Render(srvName),
 			StyleSuccess.Render(i18n.T("btn.yes")),
 			StyleMuted.Render(i18n.T("btn.cancel")))

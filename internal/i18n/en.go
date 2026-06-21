@@ -120,6 +120,7 @@ func init() {
 		"srv.updating":     "⏳ Updating...",
 		"srv.update_hint":  "[U] Update remote agent",
 		"srv.update_short": "Update agent",
+		"srv.update_confirm": "Update remote agent?",
 		"srv.no_agent":     "shuttle agent not found",
 		"srv.must_test":    "Please [Ctrl+T] test connection before saving", "srv.delete_agent": "Delete & cleanup remote agent", "srv.key_err": "Key: %v",
 		"srv.empty_auth": " Please fill in either a key or password", "srv.edit_mode": "Edit mode — please [Ctrl+T] to re-test", "srv.parse_err": "Parse: %v",
