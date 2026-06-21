@@ -195,11 +195,13 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 		if tr.ok {
 			m.testStatus = testOK
 			m.hasAgent = tr.hasAgent
+			agentInfo := ""
 			if tr.hasAgent {
-				m.testMsg = fmt.Sprintf("%s %s  OS: %s", IconOK, i18n.T("srv.test_ok"), tr.osName)
+				agentInfo = " | Agent: " + IconOK
 			} else {
-				m.testMsg = fmt.Sprintf("%s %s  OS: %s | %s", IconOK, i18n.T("srv.test_ok"), tr.osName, StyleWarning.Render(i18n.T("srv.no_agent")))
+				agentInfo = " | " + StyleWarning.Render(i18n.T("srv.no_agent"))
 			}
+			m.testMsg = fmt.Sprintf("%s %s  OS: %s%s", IconOK, i18n.T("srv.test_ok"), tr.osName, agentInfo)
 		} else {
 			m.testStatus = testFail
 			m.testMsg = tr.msg
