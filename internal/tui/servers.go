@@ -170,12 +170,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 			}
 			return *m, m.asyncDeploy(authMethods)
 		}
-		// Validate: at least one auth method
-		if strings.TrimSpace(m.formKey) == "" && strings.TrimSpace(m.formPass) == "" {
-			m.testStatus = testFail
-			m.testMsg = StyleDanger.Render(i18n.T("srv.empty_auth"))
-			return *m, nil
-		}
+		// Both key and password empty is fine — auto-detection will try ~/.ssh keys
 		m.saveServer()
 		m.saveConfig()
 		m.adding = false
