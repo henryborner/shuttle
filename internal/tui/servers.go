@@ -497,19 +497,7 @@ func (m *serversModel) formView(width, height int) string {
 		body += "\n  " + StyleDanger.Render(m.testMsg)
 	}
 
-	if m.testStatus == testNone {
-		body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+" → [Enter] "+i18n.T("btn.save"))
-	}
-	if m.testStatus == testOK && m.hasAgent && !m.deployed {
-		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
-	}
-	if m.testStatus == testOK && !m.hasAgent && !m.deployed {
-		body += "\n" + StyleWarning.Render("  "+i18n.T("srv.deploy_hint"))
-	}
-	if m.deployed {
-		body += "\n" + StyleInfo.Render("  [Enter] "+i18n.T("btn.save"))
-	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.form"))
+	body += "\n" + StyleMuted.Render("  [Ctrl+T] "+i18n.T("srv.test")+"  [Enter] "+i18n.T("btn.save")+"  "+i18n.T("help.form"))
 
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
