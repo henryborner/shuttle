@@ -8,6 +8,9 @@ syncd.yaml
 
 # IDE
 .idea/
+
+# Reference
+../rsync/
 .vscode/
 *.swp
 
