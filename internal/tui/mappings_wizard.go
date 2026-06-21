@@ -118,7 +118,7 @@ func (w *mappingsWizard) Update(msg tea.Msg) (mappingsWizard, tea.Cmd) {
 	}
 
 	// Esc / B: go back one step.
-	if key.String() == "esc" || key.String() == "b" {
+	if key.String() == "esc" {
 		w.back()
 		return *w, nil
 	}
