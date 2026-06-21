@@ -535,7 +535,7 @@ func (m *serversModel) formView(width, height int) string {
 	case testOK:
 		body += "\n  " + m.testMsg
 		if !m.hasAgent && !m.deployed {
-			body += "\n  " + StyleWarning.Render("  [Enter] "+i18n.T("srv.deploy_hint"))
+			body += "\n  " + StyleWarning.Render("  "+i18n.T("srv.deploy_hint"))
 		}
 	case testFail:
 		body += "\n  " + StyleDanger.Render(m.testMsg)
