@@ -18,27 +18,7 @@ func NewRollingSum(data []byte) *RollingSum {
 
 func (rs *RollingSum) Reset(data []byte) {
 	rs.count = int32(len(data))
-	var s1, s2 uint32
-
-	i := 0
-	n := len(data) - 4
-	for ; i <= n; i += 4 {
-		s2 += 4*(s1+uint32(data[i])+CHAR_OFFSET) +
-			3*uint32(data[i+1]) +
-			2*uint32(data[i+2]) +
-			uint32(data[i+3]) +
-			10*CHAR_OFFSET
-		s1 += uint32(data[i+0]) + uint32(data[i+1]) +
-			uint32(data[i+2]) + uint32(data[i+3]) +
-			4*CHAR_OFFSET
-	}
-	for ; i < len(data); i++ {
-		s1 += uint32(data[i]) + CHAR_OFFSET
-		s2 += s1
-	}
-	// 存满 32-bit，让自然的 uint32 溢出保持数学正确性
-	rs.s1 = s1
-	rs.s2 = s2
+	rs.s1, rs.s2 = checksum1(data)
 }
 
 // Roll 滚动窗口：移除一个旧字节，加入一个新字节，更新 s1/s2。
