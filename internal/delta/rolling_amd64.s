@@ -104,6 +104,7 @@ bail:
 	RET
 
 // Weights for VPMADDWD pairs: [w_hi, w_lo] as little-endian int16.
+// RODATA, 32B aligned — safe for full YMM load, no boundary risk.
 // Low 16B pairs: [32,31], [30,29], [28,27], [26,25], [24,23], [22,21], [20,19], [18,17]
 DATA wlo<>+0(SB)/8,  $0x001d001e001f0020
 DATA wlo<>+8(SB)/8,  $0x0019001a001b001c
