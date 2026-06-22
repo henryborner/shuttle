@@ -130,6 +130,9 @@ func (m *mappingsModel) View(width, height int) string {
 			if t.Options.Checksum {
 				opts += " ∑"
 			}
+			if t.Options.ShowDots {
+				opts += " ·"
+			}
 			src := truncatePath(t.Source, 30)
 			dst := truncatePath(t.Target, 35)
 			body += fmt.Sprintf("%s%s\n    %s → %s%s\n",

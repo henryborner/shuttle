@@ -147,7 +147,7 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			Protect:  server.Protect,
 			Checksum: task.Options.Checksum,
 			DryRun:   dryRun,
-			SkipDots: true,
+			SkipDots: !task.Options.ShowDots,
 			Workers:  cfg.Workers,
 			Flat:     task.Options.Flat,
 		})

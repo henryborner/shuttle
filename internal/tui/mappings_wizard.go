@@ -47,15 +47,16 @@ type mappingsWizard struct {
 	cfg     *config.Config
 	cfgPath string
 
-	step       mappingWizardStep
-	wipTask    config.Task
-	editIdx    int // -1 = new, >=0 = editing existing
-	inputBuf   string
-	optDelete  bool
-	optCheck   bool
-	optFlat    bool
-	isFile     bool
-	excludeCur int
+	step        mappingWizardStep
+	wipTask     config.Task
+	editIdx     int // -1 = new, >=0 = editing existing
+	inputBuf    string
+	optDelete   bool
+	optCheck    bool
+	optFlat     bool
+	optShowDots bool
+	isFile      bool
+	excludeCur  int
 
 	browser       *FileBrowser
 	remoteBrowser *RemoteBrowser
@@ -83,6 +84,7 @@ func (w *mappingsWizard) initForEdit(idx int) {
 	w.optDelete = w.wipTask.Options.Delete
 	w.optCheck = w.wipTask.Options.Checksum
 	w.optFlat = w.wipTask.Options.Flat
+	w.optShowDots = w.wipTask.Options.ShowDots
 }
 
 func (w *mappingsWizard) Init() tea.Cmd { return nil }
@@ -299,10 +301,13 @@ func (w *mappingsWizard) handleStepOptions(key string) {
 		w.optCheck = !w.optCheck
 	case "f":
 		w.optFlat = !w.optFlat
+	case "s":
+		w.optShowDots = !w.optShowDots
 	case "enter":
 		w.wipTask.Options.Delete = w.optDelete
 		w.wipTask.Options.Checksum = w.optCheck
 		w.wipTask.Options.Flat = w.optFlat
+		w.wipTask.Options.ShowDots = w.optShowDots
 		if w.editIdx >= 0 && w.editIdx < len(w.cfg.Tasks) {
 			w.cfg.Tasks[w.editIdx] = w.wipTask
 		} else {
@@ -414,7 +419,11 @@ func (w *mappingsWizard) View(width, height int) string {
 		if w.optFlat {
 			flatMark = StyleSuccess.Render(i18n.T("map.opt_flat_on"))
 		}
-		body = fmt.Sprintf("  [D] %s\n  [C] %s\n  [F] %s", delMark, chkMark, flatMark)
+		dotMark := i18n.T("map.opt_show_dots_off")
+		if w.optShowDots {
+			dotMark = StyleSuccess.Render(i18n.T("map.opt_show_dots_on"))
+		}
+		body = fmt.Sprintf("  [D] %s\n  [C] %s\n  [F] %s\n  [S] %s", delMark, chkMark, flatMark, dotMark)
 		hint = StyleMuted.Render(i18n.T("wiz.hint_opts") + i18n.T("btn.save") + "  Esc: " + i18n.T("btn.back"))
 	}
 

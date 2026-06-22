@@ -541,7 +541,7 @@ func (m *Model) startSync(task config.Task) {
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
 			Protect:  srv.Protect,
-			Checksum: task.Options.Checksum, SkipDots: true,
+			Checksum: task.Options.Checksum, SkipDots: !task.Options.ShowDots,
 			Workers: m.cfg.Workers, Flat: task.Options.Flat,
 		})
 
@@ -617,7 +617,7 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 		defer sftp.Close()
 
 		// 扫描本地文件（简化版 scanLocalFiles）
-		localFiles, err := scanLocal(task.Source, task.Options.Exclude, true)
+		localFiles, err := scanLocal(task.Source, task.Options.Exclude, !task.Options.ShowDots)
 		if err != nil {
 			return deletePreviewMsg{taskName: task.Name, err: fmt.Sprintf("scan local: %v", err)}
 		}

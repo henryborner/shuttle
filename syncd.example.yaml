@@ -34,6 +34,7 @@ tasks:
       compress: false
       checksum: false       # true: 用校验和对比; false: 用时间+大小
       flat: false            # true: 直接映射内容不套源文件夹名
+      show_dots: false       # true: 同步隐藏文件（.开头）, 默认false=跳过
 
   - name: api
     source: E:\projects\api\

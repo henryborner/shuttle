@@ -18,12 +18,13 @@ type Task struct {
 
 // Options 同步选项
 type Options struct {
-	Delete   bool     `yaml:"delete"`   // 删除目标多余文件
-	Exclude  []string `yaml:"exclude"`  // 排除文件模式
-	Compress bool     `yaml:"compress"` // SSH 压缩
-	Checksum bool     `yaml:"checksum"` // 用校验和判断差异
-	Watch    bool     `yaml:"watch"`    // 监听模式（预留）
-	Flat     bool     `yaml:"flat"`     // 直接映射内容不套源文件夹名
+	Delete   bool     `yaml:"delete"`    // 删除目标多余文件
+	Exclude  []string `yaml:"exclude"`   // 排除文件模式
+	Compress bool     `yaml:"compress"`  // SSH 压缩
+	Checksum bool     `yaml:"checksum"`  // 用校验和判断差异
+	Watch    bool     `yaml:"watch"`     // 监听模式（预留）
+	Flat     bool     `yaml:"flat"`      // 直接映射内容不套源文件夹名
+	ShowDots bool     `yaml:"show_dots"` // 显示隐藏文件（以.开头的文件/目录），默认false=跳过
 }
 
 type Server struct {
