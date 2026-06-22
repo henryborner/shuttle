@@ -2,16 +2,18 @@
 
 package delta
 
+import "golang.org/x/sys/cpu"
+
 // checksum1 computes the initial rolling checksum for data.
-// Uses 128-byte batch formula (4 unrolled 32B batches), ~10x vs byte-by-byte.
+// Uses AVX2 assembly on supported CPUs, falls back to 128B Go batch.
 func checksum1(data []byte) (s1, s2 uint32) {
 	n := len(data)
 	if n == 0 {
 		return 0, 0
 	}
 
-	// AVX2 assembly (32B/iter, full s1+s2, no saturation)
-	if n >= 64 && checksum1AVX2(data, &s1, &s2) {
+	// AVX2 assembly (32B/iter, full s1+s2, no saturation) — CPU feature check
+	if cpu.X86.HasAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
 		p := n - n%32
 		s1 += uint32(p) * CHAR_OFFSET
 		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
