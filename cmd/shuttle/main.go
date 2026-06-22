@@ -87,7 +87,12 @@ func runConfig(cmd *cobra.Command, args []string) {
 
 func runInit(cmd *cobra.Command, args []string) {
 	example := `# Shuttle 同步配置文件
+# 用法: shuttle push [任务名]
+
 version: "1.0"
+language: zh               # en / zh
+checksum: xxh64            # md5 / sha256 / xxh64
+workers: 4                 # delta 并行数: 1=串行 2/4/8=并行
 
 servers:
   - name: myserver
@@ -95,17 +100,22 @@ servers:
     port: 22
     user: deploy
     key_file: ~/.ssh/id_ed25519
+    protect:                # 保护列表：匹配的远端文件绝不覆盖/删除
+      - "*.db"
+      - "*.pem"
+      - ".env"
 
 tasks:
   - name: web
     source: E:\projects\website\dist\
     target: myserver:/var/www/html/
     options:
-      delete: true
+      delete: true           # 删除远程多余文件
       exclude:
         - "*.tmp"
         - ".DS_Store"
-      checksum: false
+      checksum: false        # true: 用校验和对比; false: 用时间+大小
+      flat: false            # true: 不套源文件夹名
 `
 	if _, err := os.Stat("syncd.yaml"); err == nil {
 		fmt.Println("syncd.yaml already exists")
