@@ -210,10 +210,20 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				}
 			}
 			if !found {
-				if !opts.DryRun {
-					if err := e.transport.Remove(rf.Path); err != nil {
-						stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
-						continue
+				if rf.IsDir {
+					// 递归删除目录
+					if !opts.DryRun {
+						if err := e.transport.RemoveRecursive(rf.Path); err != nil {
+							stats.Errors = append(stats.Errors, fmt.Errorf("delete dir %s: %w", rf.Path, err))
+							continue
+						}
+					}
+				} else {
+					if !opts.DryRun {
+						if err := e.transport.Remove(rf.Path); err != nil {
+							stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
+							continue
+						}
 					}
 				}
 				stats.DeletedFiles++

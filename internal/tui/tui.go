@@ -597,7 +597,7 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 			remoteDirs[filepath.ToSlash(filepath.Dir(remoteFile))] = true
 		}
 
-		remoteFiles := make(map[string]bool)
+		remoteFiles := make(map[string]transport.FileInfo)
 		for dir := range remoteDirs {
 			entries, err := sftp.ListDirRecursive(dir)
 			if err != nil {
@@ -606,7 +606,7 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 			for _, f := range entries {
 				key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
 				key = strings.TrimPrefix(key, "/")
-				remoteFiles[key] = true
+				remoteFiles[key] = f
 			}
 		}
 

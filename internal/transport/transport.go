@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/henryborner/shuttle/internal/util"
@@ -30,6 +31,7 @@ type Transport interface {
 	ListDirRecursive(path string) ([]FileInfo, error)
 	MkdirAll(path string) error
 	Remove(path string) error
+	RemoveRecursive(path string) error
 	Stat(path string) (FileInfo, error)
 	Exec(command string) (stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser, err error)
 }
@@ -163,7 +165,7 @@ var skipDirs = map[string]bool{
 	"snap": true, "lost+found": true,
 }
 
-// ListDirRecursive recursively lists all files under root, skipping system dirs.
+// ListDirRecursive recursively lists all files and dirs under root, skipping system dirs.
 func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 	if t.client == nil {
 		return nil, fmt.Errorf("not connected")
@@ -172,6 +174,7 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 	var count int
 	const maxFiles = 100000
 	walker := t.client.Walk(root)
+	rootSlash := filepath.ToSlash(root)
 	for walker.Step() {
 		if count >= maxFiles {
 			break
@@ -179,21 +182,24 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 		if err := walker.Err(); err != nil {
 			continue
 		}
+		path := filepath.ToSlash(walker.Path())
+		if path == rootSlash || path == strings.TrimSuffix(rootSlash, "/") {
+			continue // 跳过根目录自身
+		}
 		info := walker.Stat()
-		// Skip known system directories
 		if info.IsDir() && skipDirs[info.Name()] {
 			walker.SkipDir()
 			continue
 		}
-		if info.IsDir() {
-			continue
-		}
 		result = append(result, FileInfo{
-			Path:    filepath.ToSlash(walker.Path()),
+			Path:    path,
 			Size:    info.Size(),
 			ModTime: info.ModTime(),
-			IsDir:   false,
+			IsDir:   info.IsDir(),
 		})
+		if info.IsDir() {
+			continue // 目录已记录，不重复计数
+		}
 		count++
 	}
 	return result, nil
@@ -213,6 +219,30 @@ func (t *SFTPTransport) Remove(path string) error {
 		return fmt.Errorf("not connected")
 	}
 	return t.client.Remove(path)
+}
+
+// RemoveRecursive recursively deletes a directory and its contents.
+func (t *SFTPTransport) RemoveRecursive(dir string) error {
+	if t.client == nil {
+		return fmt.Errorf("not connected")
+	}
+	entries, err := t.client.ReadDir(dir)
+	if err != nil {
+		return t.client.RemoveDirectory(dir) // empty dir or file
+	}
+	for _, e := range entries {
+		p := filepath.ToSlash(filepath.Join(dir, e.Name()))
+		if e.IsDir() {
+			if err := t.RemoveRecursive(p); err != nil {
+				return err
+			}
+		} else {
+			if err := t.client.Remove(p); err != nil {
+				return err
+			}
+		}
+	}
+	return t.client.RemoveDirectory(dir)
 }
 
 // Stat returns file info
