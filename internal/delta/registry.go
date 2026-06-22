@@ -32,6 +32,11 @@ func init() {
 		New:    newSHA256,
 		Length: 32,
 	})
+	Register(ChecksumAlgo{
+		Name:   "xxh64",
+		New:    newXXH64,
+		Length: 8,
+	})
 }
 
 // Register 注册一个校验和算法（线程安全）
