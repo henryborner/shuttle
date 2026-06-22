@@ -1,5 +1,5 @@
 // Copyright 2026 The Shuttle Authors.
-// AVX2 checksum: 32B/iter, VPSADBW for s1, VPMADDWD for s2 (int32, no sat).
+// AVX2 checksum: 32B/iter, VPUNPCK widen for s1, VPMADDWD for s2 (int32, no sat).
 
 #include "textflag.h"
 

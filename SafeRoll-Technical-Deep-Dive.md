@@ -71,20 +71,26 @@ All intermediate accumulation occurs in int32. No instruction in the critical pa
 ### 3.2 Data Pipeline (32 bytes/iteration)
 
 ```
-Step 1: Byte → Int16 (zero-extend, no saturation)
+Step 1: s1 for current 32B — sum all bytes via widen+add
   VPMOVZXBW  →  16 × int16 from lower 16 bytes
+  VPUNPCKLWD →  4 × int32 (low words, unpack with zero)
+  VPUNPCKHWD →  4 × int32 (high words, unpack with zero)
+  ... repeat for upper 16 bytes ...
+  VPADDD     →  combine lanes
+  VPHADDD×2  →  horizontal reduction → delta_s1
 
-Step 2: Int16 → Int32 (unpack with zero)
-  VPUNPCKLWD  →  4 × int32 (low words)
-  VPUNPCKHWD  →  4 × int32 (high words)
-  VPADDD      →  merge
+Step 2: s2 += 32 × s1_before (scalar, before s1 is updated)
+  This is the classic rsync identity: each new byte shifts
+  the existing s1 contribution one position right.
 
-Step 3: Position-Weighted s2
-  VPMADDWD    →  weight[i] × data[i] → int32 (8 results)
-  VPHADDD×2   →  horizontal reduction → 1 scalar
+Step 3: Position-weighted s2 contribution for current 32B
+  VPMOVZXBW  →  16 × int16 from lower 16 bytes
+  VPMADDWD   →  weight[i] × data[i] → 8 × int32
+  ... repeat for upper 16 bytes with different weights ...
+  VPHADDD×2  →  horizontal reduction → weighted_sum
+  ADDL       →  s2 += weighted_sum
 
-Step 4: s1 Accumulation
-  VPHADDD×2   →  horizontal sum of int32 byte sums → 1 scalar
+Step 4: s1 += delta_s1
 ```
 
 ### 3.3 Weight Table
