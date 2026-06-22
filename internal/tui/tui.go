@@ -599,53 +599,14 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 
 		remoteFiles := make(map[string]bool)
 		for dir := range remoteDirs {
-			entries, err := sftp.ListDir(dir)
+			entries, err := sftp.ListDirRecursive(dir)
 			if err != nil {
 				continue
 			}
 			for _, f := range entries {
-				if f.IsDir {
-					continue
-				}
 				key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
 				key = strings.TrimPrefix(key, "/")
 				remoteFiles[key] = true
-			}
-		}
-		// 递归展开子目录，确保嵌套孤儿文件也被发现
-		for {
-			var subDirs []string
-			for dir := range remoteDirs {
-				entries, err := sftp.ListDir(dir)
-				if err != nil {
-					continue
-				}
-				for _, f := range entries {
-					if f.IsDir {
-						absPath := filepath.ToSlash(filepath.Join(remotePath, filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))))
-						if _, seen := remoteDirs[absPath]; !seen {
-							subDirs = append(subDirs, absPath)
-						}
-					}
-				}
-			}
-			if len(subDirs) == 0 {
-				break
-			}
-			for _, sd := range subDirs {
-				remoteDirs[sd] = true
-				entries, err := sftp.ListDir(sd)
-				if err != nil {
-					continue
-				}
-				for _, f := range entries {
-					if f.IsDir {
-						continue
-					}
-					key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
-					key = strings.TrimPrefix(key, "/")
-					remoteFiles[key] = true
-				}
 			}
 		}
 

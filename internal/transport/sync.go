@@ -71,41 +71,14 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		remoteDirs[remoteDir] = true
 	}
 	for dir := range remoteDirs {
-		entries, err := e.transport.ListDir(dir)
+		entries, err := e.transport.ListDirRecursive(dir)
 		if err != nil {
-			continue // 目录不存在 → 全是新文件，跳过
+			continue
 		}
 		for _, f := range entries {
 			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
 			key = strings.TrimPrefix(key, "/")
 			remoteFiles[key] = f
-		}
-	}
-	// 递归展开远端目录，确保嵌套孤儿文件也被发现
-	for {
-		var newDirs []string
-		for key, rf := range remoteFiles {
-			if rf.IsDir {
-				absPath := filepath.ToSlash(filepath.Join(opts.Target, key))
-				if _, seen := remoteDirs[absPath]; !seen {
-					newDirs = append(newDirs, absPath)
-				}
-			}
-		}
-		if len(newDirs) == 0 {
-			break
-		}
-		for _, nd := range newDirs {
-			remoteDirs[nd] = true
-			entries, err := e.transport.ListDir(nd)
-			if err != nil {
-				continue
-			}
-			for _, f := range entries {
-				key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
-				key = strings.TrimPrefix(key, "/")
-				remoteFiles[key] = f
-			}
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
@@ -223,9 +196,6 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 
 	if opts.Delete {
 		for name, rf := range remoteFiles {
-			if rf.IsDir {
-				continue // 目录无法被 SFTP Remove 删除，跳过
-			}
 			found := false
 			for _, lf := range localFiles {
 				rp, _ := filepath.Rel(opts.Source, lf.Path)
