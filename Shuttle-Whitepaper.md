@@ -65,7 +65,9 @@ s1 = Σ(b[k] + C) mod 65536,  for k = 0..N-1
 s2 = Σ s1[k]  mod 65536
 ```
 
-where `C = CHAR_OFFSET = 31` (non-zero to distinguish leading zeros). The key property of the rolling checksum is that when the window slides by one byte, the new checksum can be computed in O(1) time:
+where `C = CHAR_OFFSET = 31`. This non-zero offset prevents degenerate checksums: without it, a block of all zero bytes would produce `s1=0, s2=0`, which is indistinguishable from an empty block. With CHAR_OFFSET=31, each zero byte contributes at least 31 to s1, ensuring that even all-zero data produces a meaningful checksum. Rsync uses the same value for the same reason.
+
+The key property of the rolling checksum is that when the window slides by one byte, the new checksum can be computed in O(1) time:
 
 ```
 s1_new = s1_old - (old_byte + C) + (new_byte + C)

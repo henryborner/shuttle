@@ -15,6 +15,8 @@ Rsync's delta algorithm divides a file into fixed-size blocks and computes two c
 - **s1**: sum of all bytes plus CHAR_OFFSET per byte
 - **s2**: cumulative sum of s1 at each byte position
 
+`CHAR_OFFSET = 31` (in both rsync and Shuttle) prevents degenerate checksums. Without this offset, a block of all zeros would produce `s1=0, s2=0` — identical to an empty block's signature. The offset ensures every byte contributes at least 31, giving all-zero data a meaningful checksum. Rsync uses the same value for the same reason.
+
 The per-4-byte iterative formula:
 
 ```
