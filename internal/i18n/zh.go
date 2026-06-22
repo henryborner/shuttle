@@ -6,7 +6,7 @@ func init() {
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "增量文件同步工具",
-		"app.version":      " v0.1.2.7",
+		"app.version":      " v0.1.2.8",
 		"app.connected":    "已连接",
 		"app.disconnected": "未连接",
 
