@@ -332,10 +332,8 @@ All benchmarks on AMD Ryzen 9 8940HX (16-core), 32GB RAM, Windows 11, Go 1.26.
 
 | Operation | Rate | Notes |
 |-----------|------|-------|
-| Signature generation (10MB) | 792 MB/s | xxh64, AVX2 |
-| Delta search (10MB) | 89 MB/s | Rolling + 3-level hash |
-| Full sync (100K files) | ~15 files/s | SFTP I/O bound |
-| Reset checksum (1MB blocks) | 12× byte-by-byte | SafeRoll AVX2 |
+| Signature generation (10MB) | ~796 MB/s | xxh64, AVX2 |
+| Delta search (10MB) | ~89 MB/s | Rolling + 3-level hash match |
 
 ---
 
