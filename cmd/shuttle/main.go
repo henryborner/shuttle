@@ -86,7 +86,15 @@ func runConfig(cmd *cobra.Command, args []string) {
 }
 
 func runInit(cmd *cobra.Command, args []string) {
-	example := `# Shuttle 同步配置文件
+	if _, err := os.Stat("syncd.yaml"); err == nil {
+		fmt.Println("syncd.yaml already exists")
+		return
+	}
+	os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
+	fmt.Println("Created syncd.yaml")
+}
+
+const initTemplate = `# Shuttle 同步配置文件
 # 用法: shuttle push [任务名]
 
 version: "1.0"
@@ -117,20 +125,15 @@ tasks:
       checksum: false        # true: 用校验和对比; false: 用时间+大小
       flat: false            # true: 不套源文件夹名
 `
-	if _, err := os.Stat("syncd.yaml"); err == nil {
-		fmt.Println("syncd.yaml already exists")
-		return
-	}
-	os.WriteFile("syncd.yaml", []byte(example), 0644)
-	fmt.Println("Created syncd.yaml")
-}
 
 func runTUI(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load("syncd.yaml")
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Allow empty config to enter TUI for first-time setup
-			cfg = &config.Config{Version: "1.0"}
+			// First launch: generate default config then enter TUI
+			os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
+			fmt.Println("Created syncd.yaml — editing in TUI...")
+			cfg, _ = config.Load("syncd.yaml")
 		} else {
 			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)
 			os.Exit(1)
