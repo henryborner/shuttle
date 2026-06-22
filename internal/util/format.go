@@ -16,3 +16,20 @@ func FormatBytes(b int64) string {
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
+
+// Pad pads s to width with spaces on the right.
+func Pad(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return s + spaces(width-len(s))
+}
+
+var spaceBuf = "                                " // 32 spaces
+
+func spaces(n int) string {
+	if n <= 32 {
+		return spaceBuf[:n]
+	}
+	return spaceBuf + spaces(n-32)
+}

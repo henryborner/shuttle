@@ -186,6 +186,12 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 	} else if len(deltaJobs) > 0 {
 		stats.UpdatedFiles += len(deltaJobs)
+		for _, dj := range deltaJobs {
+			e.hook.OnFileDone(FileEvent{
+				RelPath: dj.relPath, RemotePath: dj.remotePath,
+				FileSize: dj.lf.Size, IsUpdated: true,
+			})
+		}
 	}
 
 	if opts.Delete {
@@ -211,6 +217,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 					}
 				}
 				stats.DeletedFiles++
+				e.hook.OnFileDone(FileEvent{
+					RelPath: name, RemotePath: rf.Path,
+					FileSize: rf.Size, IsDeleted: true,
+				})
 			}
 		}
 	}

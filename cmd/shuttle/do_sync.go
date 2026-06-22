@@ -9,6 +9,37 @@ import (
 	"github.com/henryborner/shuttle/internal/util"
 )
 
+// dryRunHook 在 dry-run 模式下列出每个文件的操作
+type dryRunHook struct {
+	taskName string
+}
+
+func (h *dryRunHook) OnSyncStart(name string, total int) error {
+	fmt.Printf("  %s files to check...\n", h.pad(total))
+	return nil
+}
+func (h *dryRunHook) OnFileStart(path string, size int64) error { return nil }
+func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {}
+func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
+	switch {
+	case evt.IsNew:
+		fmt.Printf("  %s  %s\n", util.Pad("NEW", 5), evt.RelPath)
+	case evt.IsUpdated:
+		tag := "UPD"
+		if evt.IsDelta {
+			tag = "Δ"
+		}
+		fmt.Printf("  %s  %s  (%s)\n", util.Pad(tag, 5), evt.RelPath, util.FormatBytes(evt.FileSize))
+	case evt.IsDeleted:
+		fmt.Printf("  %s  %s\n", util.Pad("DEL", 5), evt.RelPath)
+	default:
+		fmt.Printf("  %s  %s\n", util.Pad("SKIP", 5), evt.RelPath)
+	}
+	return nil
+}
+func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error { return nil }
+func (h *dryRunHook) pad(n int) string { return fmt.Sprintf("%d", n) }
+
 // doSync 执行同步任务
 func doSync(taskName, cfgPath string, dryRun bool) {
 	cfg, err := config.Load(cfgPath)
@@ -67,6 +98,9 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 
 		// 同步
 		engine := transport.NewSyncEngine(sftp)
+		if dryRun {
+			engine.SetHook(&dryRunHook{taskName: task.Name})
+		}
 		stats, err := engine.Sync(transport.SyncOptions{
 			Source:   task.Source,
 			Target:   remotePath,

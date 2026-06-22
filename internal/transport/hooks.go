@@ -1,4 +1,3 @@
-
 package transport
 
 import "time"
@@ -12,6 +11,7 @@ type FileEvent struct {
 	IsNew      bool          // 是否新文
 	IsUpdated  bool          // 是否更新
 	IsDelta    bool          // 是否增量同步
+	IsDeleted  bool          // 是否删除
 	DeltaSaved int64         // 增量节省的字
 	Error      error         // 错误（如有）
 	StartTime  time.Time     // 开始时
@@ -21,7 +21,6 @@ type FileEvent struct {
 // SyncHook 同步事件钩子接口
 
 type SyncHook interface {
-
 	OnSyncStart(taskName string, totalFiles int) error
 
 	OnFileStart(path string, size int64) error
@@ -32,7 +31,6 @@ type SyncHook interface {
 	// OnSyncDone 同步任务结束
 	OnSyncDone(stats *SyncStats) error
 }
-
 
 type NopHook struct{}
 
