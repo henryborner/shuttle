@@ -25,11 +25,6 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	VPCMPEQD Y15, Y15, Y15
 	VPABSB   Y15, Y15
 
-	// CHAR_OFFSET broadcast
-	LEAQ    char_constants<>+0(SB), R10
-	VMOVDQU (R10), Y10           // 8 × (32*CHAR_OFFSET) = 8 × 992
-	VMOVDQU 32(R10), Y13         // 8 × (528*CHAR_OFFSET) = 8 × 16368
-
 	// Preload first 64 bytes
 	VMOVDQU 0(DI), Y2
 	VMOVDQU 32(DI), Y3
@@ -84,11 +79,6 @@ loop:
 	// rsync: vpaddd ymm1, ymm1, ymm3  (accumulate s2 weighted)
 	VPADDD  Y3, Y1, Y1
 
-	// rsync: vpaddd ymm6, ymm10, ymm6  (s1 += 32*CHAR_OFFSET)
-	// rsync: vpaddd ymm1, ymm13, ymm1  (s2 += 528*CHAR_OFFSET)
-	VPADDD  Y10, Y6, Y6
-	VPADDD  Y13, Y1, Y1
-
 	// rsync: vmovdqa ymm2, ymm8 / ymm3, ymm9
 	VMOVDQA Y8, Y2
 	VMOVDQA Y9, Y3
@@ -96,53 +86,28 @@ loop:
 	SUBQ    $1, SI
 	JNZ     loop
 
-	// === Reduction (matching rsync exactly) ===
-
-	// rsync: vpslld ymm3, ymm4, 6
-	VPSLLD  $6, Y4, Y3
-
-	// rsync: vpsrldq ymm2, ymm6, 4
-	VPSRLDQ $4, Y6, Y2
-
-	// rsync: vpaddd ymm0, ymm3, ymm1
-	VPADDD  Y3, Y1, Y0
-
-	// rsync: vpaddd ymm6, ymm2, ymm6
-	VPADDD  Y2, Y6, Y6
-
-	// rsync: vpsrlq ymm3, ymm0, 32
-	VPSRLQ  $32, Y0, Y3
-
-	// rsync: vpsrldq ymm2, ymm6, 8
-	VPSRLDQ $8, Y6, Y2
-
-	// rsync: vpaddd ymm0, ymm3, ymm0
-	VPADDD  Y3, Y0, Y0
-
-	// rsync: vpsrldq ymm3, ymm0, 8
-	VPSRLDQ $8, Y0, Y3
-
-	// rsync: vpaddd ymm6, ymm2, ymm6
-	VPADDD  Y2, Y6, Y6
-
-	// rsync: vpaddd ymm0, ymm3, ymm0
-	VPADDD  Y3, Y0, Y0
-
-	// rsync: vextracti128 xmm2, ymm6, 1 / vpaddd xmm6, xmm2, xmm6
+	// s1 reduction: horizontal sum all 8 lanes of Y6 → scalar
 	VEXTRACTI128 $1, Y6, X2
 	VPADDD  X2, X6, X6
+	VPSRLDQ $8, X6, X2
+	VPADDD  X2, X6, X6
+	VPSRLDQ $4, X6, X2
+	VPADDD  X2, X6, X6
+	VMOVD   X6, (CX)              // store *s1
 
-	// rsync: vmovd [rcx], xmm6  (store *ps1)
-	VMOVD   X6, (CX)
+	// s2: Y1 + Y4*64 (rsync standard)
+	VPSLLD  $6, Y4, Y3            // Y3 = Y4 * 64 (per-lane)
+	VPADDD  Y3, Y1, Y0            // Y0 = Y1 + correction
 
-	// rsync: vextracti128 xmm1, ymm0, 1 / vpaddd xmm1, xmm1, xmm0
 	VEXTRACTI128 $1, Y0, X1
 	VPADDD  X1, X0, X1
-
-	// rsync: vmovd ecx, xmm1 / add eax, ecx / mov [r8], eax
+	VPSRLDQ $8, X1, X2
+	VPADDD  X2, X1, X1
+	VPSRLDQ $4, X1, X2
+	VPADDD  X2, X1, X1
 	VMOVD   X1, CX
 	ADDL    CX, AX
-	MOVL    AX, (R8)
+	MOVL    AX, (R8)              // store *s2
 
 	// rsync: vzeroupper
 	VZEROUPPER
@@ -164,16 +129,5 @@ DATA t2_constants<>+40(SB)/8, $0x1817161514131211
 DATA t2_constants<>+48(SB)/8, $0x100f0e0d0c0b0a09
 DATA t2_constants<>+56(SB)/8, $0x0807060504030201
 GLOBL t2_constants<>(SB), RODATA|NOPTR, $64
-
-// CHAR_OFFSET per 64 bytes: s1+=64*31=1984, s2+=1056*31=32736
-DATA char_constants<>+0(SB)/8,  $0x000007c0000007c0  // 1984 (little-endian)
-DATA char_constants<>+8(SB)/8,  $0x000007c0000007c0
-DATA char_constants<>+16(SB)/8, $0x000007c0000007c0
-DATA char_constants<>+24(SB)/8, $0x000007c0000007c0
-DATA char_constants<>+32(SB)/8, $0x00007fe000007fe0  // 32736
-DATA char_constants<>+40(SB)/8, $0x00007fe000007fe0
-DATA char_constants<>+48(SB)/8, $0x00007fe000007fe0
-DATA char_constants<>+56(SB)/8, $0x00007fe000007fe0
-GLOBL char_constants<>(SB), RODATA|NOPTR, $64
 
 

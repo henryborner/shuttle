@@ -10,9 +10,9 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		return 0, 0
 	}
 
-	// AVX2 disabled — compiles/runs but checksum parity not yet achieved.
-	// Enable for debugging: `if n >= 128 && checksum1AVX2(data, &s1, &s2) { ... }`
-	_ = checksum1AVX2 // keep import alive
+	// AVX2 WIP: compiles & works for raw bytes, CHAR_OFFSET integration TBD.
+	// Enable: `if n >= 128 && checksum1AVX2(data, &s1, &s2) { ... }`
+	_ = checksum1AVX2
 
 	// Go batch fallback (32-byte at a time, rsync-verified formula)
 
