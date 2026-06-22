@@ -328,7 +328,7 @@ tasks:
 
 ## 8. Benchmark Summary
 
-All benchmarks on Intel i7-7700HQ, 32GB RAM, Windows 11, Go 1.26.
+All benchmarks on AMD Ryzen 9 8940HX (16-core), 32GB RAM, Windows 11, Go 1.26.
 
 | Operation | Rate | Notes |
 |-----------|------|-------|
