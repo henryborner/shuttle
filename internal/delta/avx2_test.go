@@ -1,18 +1,11 @@
+//go:build amd64
+
 package delta
 
 import (
 	"crypto/rand"
 	"testing"
 )
-
-// referenceChecksum1 computes checksum byte-by-byte (original algorithm).
-func referenceChecksum1(data []byte) (s1, s2 uint32) {
-	for _, b := range data {
-		s1 += uint32(b) + CHAR_OFFSET
-		s2 += s1
-	}
-	return
-}
 
 func TestAVX2Parity(t *testing.T) {
 	tests := []struct {

@@ -44,8 +44,8 @@ func mmap(f *os.File, size int64) ([]byte, error) {
 	}
 	syscall.CloseHandle(syscall.Handle(h))
 
-	// Convert pointer to Go slice
-	data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), int(size))
+	// Convert pointer to Go slice (safe: addr is valid mapped memory)
+	data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), int(size)) //nolint:unsafeptr
 	return data, nil
 }
 
