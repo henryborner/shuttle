@@ -6,7 +6,7 @@
 
 ## Abstract
 
-> **For most projects: set `CHAR_OFFSET=0` and use rsync's AVX2 as-is.** The saturation issue described below only manifests under non-zero CHAR_OFFSET — an edge case that modern rsync avoids entirely. SafeRoll is an exploration of what happens when you *don't* take that shortcut, documented for reference rather than recommendation.
+> **Context**: `CHAR_OFFSET=31` is the original Tridgell thesis value — stronger rolling checksums than the zero offset adopted by modern rsync (which lowered it solely for backward compatibility). This paper documents the SIMD saturation problem that arises when combining CHAR_OFFSET=31 with rsync's AVX2 path, and presents SafeRoll as a solution that preserves both the stronger checksum semantics and SIMD acceleration.
 
 Rsync's AVX2 checksum implementation uses `VPMADDUBSW` with int16 saturated accumulation. While correct for rsync's default `CHAR_OFFSET=0`, this design fails under non-zero CHAR_OFFSET or certain byte patterns — intermediate values exceed 32767 and are silently truncated. SafeRoll replaces this with a VPUNPCK + VPMADDWD pipeline operating entirely in int32, eliminating the saturation surface while preserving bit-identical delta output. This article analyzes the failure mode in rsync's SIMD and presents the SafeRoll alternative.
 

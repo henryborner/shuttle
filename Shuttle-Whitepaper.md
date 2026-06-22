@@ -116,7 +116,7 @@ The remote side generates block signatures using `GenerateSignatureReader`, whic
 
 ## 3. SafeRoll: AVX2 SIMD Checksum Engine
 
-> **A note on practicality**: SafeRoll exists because Shuttle inherited `CHAR_OFFSET=31` from rsync's original academic specification, which causes int16 saturation in rsync's AVX2 SIMD path. **For the vast majority of projects, the correct approach is simpler**: set `CHAR_OFFSET=0` (matching modern rsync) and use rsync's AVX2 implementation directly — it is faster and well-tested for that configuration. SafeRoll is documented here as an exercise in designing a saturation-free alternative, not as a general recommendation. If you are building a delta sync tool, prefer rsync's SIMD with `CHAR_OFFSET=0`.
+> **A note on practicality**: SafeRoll exists because Shuttle uses `CHAR_OFFSET=31` — the original Tridgell thesis value, which produces stronger rolling checksums than the zero offset adopted by modern rsync. Rsync lowered it to 0 solely for backward compatibility with older protocol versions, not for technical superiority. `CHAR_OFFSET=31` is the academically "correct" choice, but it exposes int16 saturation in rsync's AVX2 SIMD path — an edge case rsync never tested because their own value is 0. SafeRoll is the solution for projects that want both SIMD acceleration and the stronger checksum semantics of CHAR_OFFSET=31.
 
 ### 3.1 Motivation
 
