@@ -20,9 +20,9 @@ Shuttle synchronizes files from a local Windows machine to a remote Linux server
 syncd.yaml (config)
     │
     ▼
-┌──────────┐    SSH ┌──────────┐
-│  Shuttle  │◄──────►│  Remote   │
-│  (local)  │  SFTP  │  (server) │
+┌──────────┐   SSH  ┌──────────┐
+│  Shuttle │◄──────►│  Remote  │
+│  (local) │  SFTP  │ (server) │
 └──────────┘        └──────────┘
     │                    │
     │ scanLocalFiles     │ shuttle receive
