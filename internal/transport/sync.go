@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/henryborner/shuttle/internal/delta"
+	"github.com/henryborner/shuttle/internal/util"
 )
 
 type SyncOptions struct {
@@ -299,23 +300,34 @@ func (p *progressReader) Read(b []byte) (int, error) {
 
 // uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
+// 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
 	// 并行读取本地新文件（I/O）和远端签名（网络）
 	type localResult struct {
-		data []byte
-		err  error
+		data  []byte
+		close func() error // mmap 释放函数
+		err   error
 	}
 	localDone := make(chan localResult, 1)
 	go func() {
-		d, e := os.ReadFile(info.Path)
-		localDone <- localResult{d, e}
+		d, closer, e := util.MmapReadOnly(info.Path)
+		if e != nil {
+			// mmap 失败 → 回退 os.ReadFile（非 mmap 系统或权限不足）
+			raw, re := os.ReadFile(info.Path)
+			localDone <- localResult{data: raw, err: re}
+			return
+		}
+		localDone <- localResult{data: d, close: closer}
 	}()
 
 	cmd := fmt.Sprintf("shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
-		<-localDone
+		lr := <-localDone
+		if lr.close != nil {
+			lr.close()
+		}
 		// delta 不可用，回退全量上传（远端可能未部署 shuttle agent）
 		_ = e.uploadFile(info, remotePath)
 		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
@@ -334,7 +346,10 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {
 		stdin.Close()
-		<-localDone
+		lr := <-localDone
+		if lr.close != nil {
+			lr.close()
+		}
 		<-stderrDone
 		_ = e.uploadFile(info, remotePath)
 		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
@@ -346,6 +361,9 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		stdin.Close()
 		<-stderrDone
 		return 0, 0, fmt.Errorf("read local: %w", lr.err)
+	}
+	if lr.close != nil {
+		defer lr.close()
 	}
 
 	// 本地匹配（文件数据+签名已就绪）

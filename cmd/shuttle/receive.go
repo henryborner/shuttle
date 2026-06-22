@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/henryborner/shuttle/internal/delta"
+	"github.com/henryborner/shuttle/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -58,11 +59,19 @@ func runReceive(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// 5. 读取 basis 文件用于重建（重建阶段仍需随机读取块，暂保留 ReadFile）
-	oldData, err := os.ReadFile(filePath)
+	// 5. 读取 basis 文件用于重建
+	// 大文件用 mmap 避免全量读入内存，失败时回退 ReadFile
+	oldData, closer, err := util.MmapReadOnly(filePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 重新读取文件失败: %v\n", err)
-		os.Exit(1)
+		// mmap 失败 → 回退 ReadFile（非 mmap 系统或权限不足）
+		oldData, err = os.ReadFile(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 重新读取文件失败: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if closer != nil {
+		defer closer()
 	}
 
 	blockLens := make([]int32, len(sig.BlockSums))
