@@ -93,6 +93,8 @@ Step 3: Position-weighted s2 contribution for current 32B
 Step 4: s1 += delta_s1
 ```
 
+**Loop structure**: The assembly uses a software-pipelining pattern — the next 32B block is preloaded during the current iteration (`VMOVDQU 0(DI), Y8`), then promoted to the working register (`VMOVDQA Y8, Y2`) at the bottom of the loop. On the final iteration, the preload is skipped (`CMPQ SI, $1; JE skip_prefetch`) to avoid reading past the data buffer — a subtle boundary condition that would manifest as a crash only when the buffer ends at a page edge.
+
 ### 3.3 Weight Table
 
 Position weights are stored as explicit little-endian int16 pairs in `.rodata`. For a 32-byte chunk, weights `[32,31,...,1]` are split into two 16-byte groups:
