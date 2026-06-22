@@ -6,9 +6,9 @@
 
 ## Abstract
 
-> **Context**: `CHAR_OFFSET=31` is the original Tridgell thesis value — stronger rolling checksums than the zero offset adopted by modern rsync (which lowered it solely for backward compatibility). This paper documents the SIMD saturation problem that arises when combining CHAR_OFFSET=31 with rsync's AVX2 path, and presents SafeRoll as a solution that preserves both the stronger checksum semantics and SIMD acceleration.
+> **Context**: Shuttle follows the original Tridgell thesis with `CHAR_OFFSET=31`. Modern rsync defaults to 0 — a pragmatic choice for backward compatibility with older protocol versions. This paper examines the SIMD arithmetic challenge that arises when combining CHAR_OFFSET=31 with rsync's int16-based AVX2 path, and presents SafeRoll as an alternative that supports both the stronger checksum semantics and SIMD acceleration.
 
-Rsync's AVX2 checksum implementation uses `VPMADDUBSW` with int16 saturated accumulation. While correct for rsync's default `CHAR_OFFSET=0`, this design fails under non-zero CHAR_OFFSET or certain byte patterns — intermediate values exceed 32767 and are silently truncated. SafeRoll replaces this with a VPUNPCK + VPMADDWD pipeline operating entirely in int32, eliminating the saturation surface while preserving bit-identical delta output. This article analyzes the failure mode in rsync's SIMD and presents the SafeRoll alternative.
+Rsync's AVX2 checksum implementation uses `VPMADDUBSW` with int16 saturated accumulation. This design works well for `CHAR_OFFSET=0`, the value rsync ships with. With a non-zero CHAR_OFFSET or certain byte patterns, intermediate values may exceed 32767 and be silently truncated. SafeRoll replaces this with a VPUNPCK + VPMADDWD pipeline operating entirely in int32, avoiding saturation while producing identical delta output. This article analyzes the failure mode in rsync's SIMD and presents the SafeRoll alternative.
 
 ## 1. Background: Rsync's Block Checksum
 
@@ -40,7 +40,7 @@ result[i] = saturate_to_int16(src1[2i]*src2[2i] + src1[2i+1]*src2[2i+1])
 
 The saturation ceiling is 32767. Any pair sum exceeding this is clamped.
 
-### 2.2 When It Breaks
+### 2.2 Saturation Boundary
 
 Rsync's T2 weight table is `{64, 63, 62, ..., 1}`. For a pair `(64, 63)` operating on two `0xFF` bytes:
 
@@ -56,11 +56,11 @@ half2 pair max: 32*255 + 31*255 = 16065
 VPADDW result:   32385 + 16065 = 48450  ← EXCEEDS 32767, SATURATES
 ```
 
-The saturation is silent — no exception, no error code, just silently wrong results. For rsync's default `CHAR_OFFSET=0` and typical file data (average byte ~128), this edge case is rarely triggered. But it is mathematically present.
+The saturation is silent — no exception, no error code, just silently wrong results. With `CHAR_OFFSET=0` and typical file data (average byte ~128), this boundary is rarely crossed. But it is mathematically present.
 
-### 2.3 CHAR_OFFSET ≠ 0 Amplifies the Problem
+### 2.3 Interaction with Non-Zero CHAR_OFFSET
 
-Shuttle uses `CHAR_OFFSET=31`, adding 31 to every byte before checksum computation. Each byte's contribution increases by 31, and the cumulative effect across 32 groups of 4 bytes pushes intermediate s1 and s2 values closer to — and eventually past — the int16 ceiling. The `CHAR_OFFSET`-dependent correction term (`528*CHAR_OFFSET` per 32 bytes) interacts with the lane-distribution logic in rsync's reduction phase, which was never tested for non-zero CHAR_OFFSET.
+Shuttle uses `CHAR_OFFSET=31`, adding 31 to every byte before checksum computation. Each byte's contribution increases by 31, and the cumulative effect across 32 groups of 4 bytes pushes intermediate s1 and s2 values closer to the int16 ceiling. The `CHAR_OFFSET`-dependent correction term (`528*CHAR_OFFSET` per 32 bytes) interacts with the lane-distribution logic in rsync's reduction phase, which was calibrated for `CHAR_OFFSET=0`.
 
 ## 3. SafeRoll Design
 
@@ -122,7 +122,7 @@ This eliminates all CHAR_OFFSET-dependent corner cases from the SIMD path.
 | Bytes/iteration | 64 | 32 |
 | Weight encoding | Descending sequence `{64..1}` | Explicit int16 pairs |
 | CHAR_OFFSET handling | In-loop vector addition | Post-loop scalar identity |
-| Saturation risk | Present (untested for CHAR_OFFSET≠0) | None |
+| Saturation risk | Present with CHAR_OFFSET≠0 | None |
 | Cross-term computation | Y4 accumulator × 64 | Position-weighted VPMADDWD |
 
 ## 5. Correctness

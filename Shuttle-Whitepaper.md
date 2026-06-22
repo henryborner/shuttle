@@ -116,15 +116,15 @@ The remote side generates block signatures using `GenerateSignatureReader`, whic
 
 ## 3. SafeRoll: AVX2 SIMD Checksum Engine
 
-> **A note on practicality**: SafeRoll exists because Shuttle uses `CHAR_OFFSET=31` — the original Tridgell thesis value, which produces stronger rolling checksums than the zero offset adopted by modern rsync. Rsync lowered it to 0 solely for backward compatibility with older protocol versions, not for technical superiority. `CHAR_OFFSET=31` is the academically "correct" choice, but it exposes int16 saturation in rsync's AVX2 SIMD path — an edge case rsync never tested because their own value is 0. SafeRoll is the solution for projects that want both SIMD acceleration and the stronger checksum semantics of CHAR_OFFSET=31.
+> **Why SafeRoll?** Shuttle uses `CHAR_OFFSET=31`, following the original Tridgell thesis. Modern rsync defaults to 0 — a pragmatic choice for backward compatibility with older protocol versions, as noted in `rsync.h`: *"a non-zero CHAR_OFFSET makes the rolling sum stronger, but is incompatible with older versions"*. Both values have valid reasons. However, `CHAR_OFFSET=31` pushes byte contributions higher, and rsync's AVX2 path — designed around `CHAR_OFFSET=0` — uses saturating int16 arithmetic that can overflow with the larger offset. SafeRoll provides an alternative SIMD engine that handles `CHAR_OFFSET=31` without saturation, while still learning from rsync's pioneering approach to SIMD-accelerated checksums.
 
 ### 3.1 Motivation
 
 The initial block checksum computation (`checksum1` in `internal/delta/rolling.go`) processes every byte in the file. For a 100MB file with 700-byte blocks, it is called ~150,000 times, each time processing 700 bytes. Optimizing this function directly impacts sync throughput.
 
-The rsync project provides an AVX2-accelerated version using `VPMADDUBSW`, which computes byte-level multiply-accumulate with int16 saturated addition. However, this design has a critical flaw when used with non-zero CHAR_OFFSET.
+Rsync's AVX2-accelerated path (in `simd-checksum-avx2.S`) uses `VPMADDUBSW`, which computes byte-level multiply-accumulate with int16 saturated addition. This design works well for `CHAR_OFFSET=0`, the value rsync ships with. When using a non-zero offset like 31, however, the saturation boundary can be reached.
 
-### 3.2 Flaw in Rsync's AVX2 Path
+### 3.2 Why Rsync's AVX2 Path and CHAR_OFFSET=31 Don't Mix
 
 Rsync's `simd-checksum-avx2.S` processes 64 bytes per iteration with a T2 weight table `{64,63,...,1}`. After computing weighted sums for two 32-byte halves, it combines them with `VPADDW` — a *saturating* int16 addition:
 
@@ -134,9 +134,9 @@ Half 2 weighted pair: 32×255 + 31×255 = 16065
 VPADDW result:        32385 + 16065 = 48450 > 32767 → SATURATES to 32767
 ```
 
-The saturation is silent — no exception, no error flag, just truncated results. For rsync's default `CHAR_OFFSET=0`, typical file data (byte mean ~128) rarely triggers this. Shuttle's `CHAR_OFFSET=31` pushes byte contributions 31 units higher, making the saturation boundary practically reachable.
+The saturation is silent — no exception, no error flag, just truncated results. For `CHAR_OFFSET=0` with typical file data (byte mean ~128), this boundary is rarely crossed. With `CHAR_OFFSET=31`, each byte contributes 31 units more, making saturation more likely.
 
-Additionally, rsync's reduction phase couples CHAR_OFFSET contributions with data lane distribution. The correction multiplier (×64 from `VPSLLD $6, Y4, Y3`) assumes CHAR_OFFSET=0. For non-zero offsets, the lane arithmetic breaks silently.
+Additionally, rsync's reduction phase is calibrated for `CHAR_OFFSET=0`; the correction multiplier (×64 from `VPSLLD $6, Y4, Y3`) doesn't account for a non-zero offset.
 
 ### 3.3 SafeRoll Design
 
