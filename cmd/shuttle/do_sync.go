@@ -3,22 +3,36 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/transport"
 	"github.com/henryborner/shuttle/internal/util"
 )
 
+// highRiskDryExts 高危文件扩展名，dry-run 时额外警告
+var highRiskDryExts = map[string]string{
+	".db": "database", ".sql": "database", ".sqlite": "database", ".sqlite3": "database",
+	".mdb": "database", ".myd": "database", ".myi": "database", ".frm": "database", ".ibd": "database",
+	".key": "private key", ".pem": "certificate/key", ".crt": "certificate",
+	".p12": "keystore", ".pfx": "keystore", ".jks": "keystore",
+	".conf": "config", ".cfg": "config", ".ini": "config",
+	".yaml": "config", ".yml": "config", ".env": "config",
+	".service": "systemd unit", ".timer": "systemd unit",
+}
+
 // dryRunHook 在 dry-run 模式下列出每个文件的操作
 type dryRunHook struct {
-	taskName string
+	taskName     string
+	deletedFiles []string // 记录被删的文件
 }
 
 func (h *dryRunHook) OnSyncStart(name string, total int) error {
-	fmt.Printf("  %s files to check...\n", h.pad(total))
+	fmt.Printf("  %d files to check...\n", total)
 	return nil
 }
-func (h *dryRunHook) OnFileStart(path string, size int64) error { return nil }
+func (h *dryRunHook) OnFileStart(path string, size int64) error     { return nil }
 func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {}
 func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	switch {
@@ -31,14 +45,38 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 		}
 		fmt.Printf("  %s  %s  (%s)\n", util.Pad(tag, 5), evt.RelPath, util.FormatBytes(evt.FileSize))
 	case evt.IsDeleted:
+		h.deletedFiles = append(h.deletedFiles, evt.RelPath)
 		fmt.Printf("  %s  %s\n", util.Pad("DEL", 5), evt.RelPath)
 	default:
 		fmt.Printf("  %s  %s\n", util.Pad("SKIP", 5), evt.RelPath)
 	}
 	return nil
 }
-func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error { return nil }
-func (h *dryRunHook) pad(n int) string { return fmt.Sprintf("%d", n) }
+func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
+	// 二次警告：dry-run 删除清单中有高危文件
+	var risky []string
+	for _, f := range h.deletedFiles {
+		ext := strings.ToLower(filepath.Ext(f))
+		base := strings.ToLower(filepath.Base(f))
+		if kind, ok := highRiskDryExts[ext]; ok {
+			risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))
+		} else if ext == "" {
+			// 无扩展名文件也可能是重要的
+			if kind, ok := highRiskDryExts["."+base]; ok {
+				risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))
+			}
+		}
+	}
+	if len(risky) > 0 {
+		fmt.Println()
+		fmt.Println("  !! WARNING: High-risk files in delete list:")
+		for _, r := range risky {
+			fmt.Println(r)
+		}
+		fmt.Println("  Review carefully before running without --dry-run!")
+	}
+	return nil
+}
 
 // doSync 执行同步任务
 func doSync(taskName, cfgPath string, dryRun bool) {
