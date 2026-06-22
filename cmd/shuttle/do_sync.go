@@ -24,8 +24,8 @@ var highRiskDryExts = map[string]string{
 
 // dryRunHook 在 dry-run 模式下列出每个文件的操作
 type dryRunHook struct {
-	taskName     string
-	deletedFiles []string // 记录被删的文件
+	dry          bool
+	deletedFiles []string
 }
 
 func (h *dryRunHook) OnSyncStart(name string, total int) error {
@@ -136,9 +136,7 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 
 		// 同步
 		engine := transport.NewSyncEngine(sftp)
-		if dryRun {
-			engine.SetHook(&dryRunHook{taskName: task.Name})
-		}
+		engine.SetHook(&dryRunHook{dry: dryRun})
 		stats, err := engine.Sync(transport.SyncOptions{
 			Source:   task.Source,
 			Target:   remotePath,
