@@ -54,9 +54,12 @@ loop:
 	VPHADDD X0, X0, X0            // 1
 	VMOVD   X0, R12              // delta_s1
 
-	// Preload next
+	// Preload next (skip on last iteration to avoid OOB read)
+	CMPQ	SI, $1
+	JE	skip_prefetch
 	VMOVDQU 0(DI), Y8
-	ADDQ    $32, DI
+	ADDQ	$32, DI
+skip_prefetch:
 
 	// ── s2: s2 += 32 * s1_before ──
 	MOVL    R10, R9              // R9 = s1_before
