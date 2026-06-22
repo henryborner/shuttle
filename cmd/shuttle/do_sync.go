@@ -41,12 +41,6 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 	for _, task := range tasks {
 		fmt.Printf("Task: %s\n  Source: %s\n  Target: %s\n", task.Name, task.Source, task.Target)
 
-		if dryRun {
-			fmt.Println("  [dry run] skipped")
-			fmt.Println()
-			continue
-		}
-
 		serverName, remotePath := config.ParseTarget(task.Target)
 		if serverName == "" {
 			fmt.Println("  Local sync not yet supported")
@@ -92,10 +86,17 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			continue
 		}
 
-		fmt.Printf("  Done | files:%d new:%d updated:%d",
-			stats.TotalFiles, stats.NewFiles, stats.UpdatedFiles)
+		prefix := ""
+		if dryRun {
+			prefix = "[DRY RUN] "
+		}
+		fmt.Printf("  %sDone | files:%d new:%d updated:%d",
+			prefix, stats.TotalFiles, stats.NewFiles, stats.UpdatedFiles)
 		if stats.SkippedFiles > 0 {
 			fmt.Printf(" skipped:%d", stats.SkippedFiles)
+		}
+		if stats.DeletedFiles > 0 {
+			fmt.Printf(" deleted:%d", stats.DeletedFiles)
 		}
 		if stats.DeltaFiles > 0 {
 			fmt.Printf(" Δ:%d", stats.DeltaFiles)
