@@ -10,6 +10,20 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		return 0, 0
 	}
 
+	// AVX2 assembly (32B/iter, full s1+s2, no saturation)
+	if n >= 64 && checksum1AVX2(data, &s1, &s2) {
+		p := n - n%32
+		s1 += uint32(p) * CHAR_OFFSET
+		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+		rem := n % 32
+		for i := n - rem; i < n; i++ {
+			s1 += uint32(data[i]) + CHAR_OFFSET
+			s2 += s1
+		}
+		return s1, s2
+	}
+
+	// Go 128B batch fallback
 	i := 0
 	// 128B main loop: 4 unrolled 32B rsync-verified batches
 	for i+128 <= n {

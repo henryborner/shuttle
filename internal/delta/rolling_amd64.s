@@ -31,14 +31,28 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	ADDQ    $32, DI
 
 loop:
-	// ── s1: delta = sum of 32 bytes ──
-	VPSADBW Y2, Y14, Y0          // 4 × int16 (8B groups, sparse layout)
+	// ── s1: sum 32 bytes via widen+add (no sparse layout, no sat) ──
+	// Low 16 bytes → 8 int16 → 8 int32 (via unpack with zero)
+	VPMOVZXBW X2, Y3             // 16 bytes → 8 int16 in Y3
+	VPXOR   Y5, Y5, Y5
+	VPUNPCKLWD Y5, Y3, Y0        // low 4 int16 → 4 int32
+	VPUNPCKHWD Y5, Y3, Y3        // high 4 int16 → 4 int32
+	VPADDD  Y3, Y0, Y0            // 8 int32 sums (4 per 128-bit lane)
+
+	// High 16 bytes
+	VEXTRACTI128 $1, Y2, X3
+	VPMOVZXBW X3, Y3
+	VPUNPCKLWD Y5, Y3, Y4
+	VPUNPCKHWD Y5, Y3, Y3
+	VPADDD  Y3, Y4, Y4
+
+	// Combine and horizontal sum → scalar delta_s1
+	VPADDD  Y4, Y0, Y0
 	VEXTRACTI128 $1, Y0, X1
-	VPADDW  X1, X0, X0           // → 2 int16 at words 0,3
-	VPHADDW X0, X0, X0           // → sums at words 0,1 (first VPHADDW)
-	VPHADDW X0, X0, X0           // → total sum at word 0 (second VPHADDW)
-	VMOVD   X0, R12
-	ANDL    $0xFFFF, R12          // extract lower 16-bit word = delta_s1
+	VPADDD  X1, X0, X0           // 4 int32
+	VPHADDD X0, X0, X0            // 2
+	VPHADDD X0, X0, X0            // 1
+	VMOVD   X0, R12              // delta_s1
 
 	// Preload next
 	VMOVDQU 0(DI), Y8
@@ -87,18 +101,18 @@ bail:
 	RET
 
 // Weights for VPMADDWD pairs: [w_hi, w_lo] as little-endian int16.
-// Low 16B: [31,32], [29,30], [27,28], [25,26], [23,24], [21,22], [19,20], [17,18]
-DATA wlo<>+0(SB)/8,  $0x0020001f001e001d
-DATA wlo<>+8(SB)/8,  $0x001c001b001a0019
-DATA wlo<>+16(SB)/8, $0x0018001700160015
-DATA wlo<>+24(SB)/8, $0x0014001300120011
+// Low 16B pairs: [32,31], [30,29], [28,27], [26,25], [24,23], [22,21], [20,19], [18,17]
+DATA wlo<>+0(SB)/8,  $0x001d001e001f0020
+DATA wlo<>+8(SB)/8,  $0x0019001a001b001c
+DATA wlo<>+16(SB)/8, $0x0015001600170018
+DATA wlo<>+24(SB)/8, $0x0011001200130014
 GLOBL wlo<>(SB), RODATA|NOPTR, $32
 
-// High 16B: [15,16], [13,14], [11,12], [9,10], [7,8], [5,6], [3,4], [1,2]
-DATA whi<>+0(SB)/8,  $0x0010000f000e000d
-DATA whi<>+8(SB)/8,  $0x000c000b000a0009
-DATA whi<>+16(SB)/8, $0x0008000700060005
-DATA whi<>+24(SB)/8, $0x0004000300020001
+// High 16B pairs: [16,15], [14,13], [12,11], [10,9], [8,7], [6,5], [4,3], [2,1]
+DATA whi<>+0(SB)/8,  $0x000d000e000f0010
+DATA whi<>+8(SB)/8,  $0x0009000a000b000c
+DATA whi<>+16(SB)/8, $0x0005000600070008
+DATA whi<>+24(SB)/8, $0x0001000200030004
 GLOBL whi<>(SB), RODATA|NOPTR, $32
 
 

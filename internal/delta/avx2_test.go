@@ -22,6 +22,11 @@ func TestAVX2Parity(t *testing.T) {
 		{"zeros-128", make([]byte, 128)},
 		{"ones-64", bytesRepeat(64, 0xFF)},
 		{"ones-128", bytesRepeat(128, 0xFF)},
+		{"inc-64", incBytes(64)},
+		{"inc-128", incBytes(128)},
+		{"rand-128", randBytes(128)},
+		{"rand-700", randBytes(700)},
+		{"rand-2048", randBytes(2048)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -30,9 +35,14 @@ func TestAVX2Parity(t *testing.T) {
 			if !checksum1AVX2(tt.data, &avxS1, &avxS2) {
 				t.Fatal("AVX2 refused")
 			}
-			t.Logf("raw ref: s1=%d s2=%d  AVX2: s1=%d s2=%d", rawS1, rawS2, avxS1, avxS2)
+			// AVX2 processes full 32B chunks only; handle remainder
+			p := len(tt.data) - len(tt.data)%32
+			for i := p; i < len(tt.data); i++ {
+				avxS1 += uint32(tt.data[i])
+				avxS2 += avxS1
+			}
 			if avxS1 != rawS1 || avxS2 != rawS2 {
-				t.Errorf("mismatch")
+				t.Errorf("s1 want=%d got=%d, s2 want=%d got=%d", rawS1, avxS1, rawS2, avxS2)
 			}
 		})
 	}
