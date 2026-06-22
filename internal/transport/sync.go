@@ -18,6 +18,7 @@ type SyncOptions struct {
 	Target   string
 	Delete   bool
 	Exclude  []string
+	Protect  []string // 保护模式：远端匹配路径绝不覆盖/删除
 	Checksum bool
 	DryRun   bool
 	SkipDots bool // skip files/dirs starting with "." (default true for safety)
@@ -26,16 +27,17 @@ type SyncOptions struct {
 }
 
 type SyncStats struct {
-	TotalFiles   int
-	NewFiles     int
-	UpdatedFiles int
-	DeletedFiles int
-	SkippedFiles int
-	DeltaFiles   int
-	TotalBytes   int64
-	SentBytes    int64
-	DeltaSaved   int64
-	Errors       []error
+	TotalFiles     int
+	NewFiles       int
+	UpdatedFiles   int
+	DeletedFiles   int
+	SkippedFiles   int
+	ProtectedFiles int
+	DeltaFiles     int
+	TotalBytes     int64
+	SentBytes      int64
+	DeltaSaved     int64
+	Errors         []error
 }
 
 type SyncEngine struct {
@@ -101,6 +103,19 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
+
+		// 保护检查：远端已有且匹配 protect 模式 → 禁止覆盖
+		if exists && MatchProtect(remotePath, opts.Protect) {
+			stats.ProtectedFiles++
+			stats.TotalFiles++
+			stats.TotalBytes += lf.Size
+			e.hook.OnFileDone(FileEvent{
+				RelPath: relPath, RemotePath: remotePath,
+				FileSize: lf.Size, IsProtected: true,
+			})
+			continue
+		}
+
 		start := time.Now()
 		e.hook.OnFileStart(relPath, lf.Size)
 
@@ -210,6 +225,15 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				}
 			}
 			if !found {
+				// 保护检查：远端路径匹配 protect 模式则跳过删除
+				if MatchProtect(rf.Path, opts.Protect) {
+					stats.ProtectedFiles++
+					e.hook.OnFileDone(FileEvent{
+						RelPath: name, RemotePath: rf.Path,
+						FileSize: rf.Size, IsProtected: true,
+					})
+					continue
+				}
 				if rf.IsDir {
 					// 递归删除目录
 					if !opts.DryRun {
@@ -411,4 +435,24 @@ func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileI
 	}
 
 	return files, err
+}
+
+// MatchProtect 检查给定路径是否匹配任一保护模式
+// 同时匹配 basename 和完整路径，目录匹配时整个目录被保护
+func MatchProtect(path string, patterns []string) bool {
+	if len(patterns) == 0 {
+		return false
+	}
+	slashPath := filepath.ToSlash(path)
+	base := filepath.Base(path)
+	for _, p := range patterns {
+		pat := strings.TrimRight(p, "/")
+		if ok, _ := filepath.Match(pat, base); ok {
+			return true
+		}
+		if ok, _ := filepath.Match(pat, slashPath); ok {
+			return true
+		}
+	}
+	return false
 }

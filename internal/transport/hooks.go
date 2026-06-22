@@ -4,18 +4,19 @@ import "time"
 
 // FileEvent 文件同步事件
 type FileEvent struct {
-	RelPath    string        // 相对路径
-	RemotePath string        // 远程路径
-	FileSize   int64         // 文件大小
-	BytesSent  int64         // 已传输字
-	IsNew      bool          // 是否新文
-	IsUpdated  bool          // 是否更新
-	IsDelta    bool          // 是否增量同步
-	IsDeleted  bool          // 是否删除
-	DeltaSaved int64         // 增量节省的字
-	Error      error         // 错误（如有）
-	StartTime  time.Time     // 开始时
-	Duration   time.Duration // 耗时
+	RelPath     string        // 相对路径
+	RemotePath  string        // 远程路径
+	FileSize    int64         // 文件大小
+	BytesSent   int64         // 已传输字
+	IsNew       bool          // 是否新文
+	IsUpdated   bool          // 是否更新
+	IsDelta     bool          // 是否增量同步
+	IsDeleted   bool          // 是否删除
+	IsProtected bool          // 是否受保护被跳过
+	DeltaSaved  int64         // 增量节省的字
+	Error       error         // 错误（如有）
+	StartTime   time.Time     // 开始时
+	Duration    time.Duration // 耗时
 }
 
 // SyncHook 同步事件钩子接口

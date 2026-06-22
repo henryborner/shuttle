@@ -134,7 +134,14 @@ func init() {
 		"srv.os_err":      "OS: %v",
 		"srv.stdin_err":   "Stdin: %v",
 		"srv.deploy_err":  "Deploy: %v", "srv.manual_install": "Manual: scp shuttle_linux user@host:~/ && ssh host chmod +x ~/shuttle", "srv.read_err": "Read: %v",
-		"srv.verify_err": "Verify: %v",
+		"srv.verify_err":     "Verify: %v",
+		"srv.protect":        "Protect",
+		"srv.protect_title":  "🛡 Protect - %s",
+		"srv.protect_add":    "Add",
+		"srv.protect_delete": "Delete",
+		"srv.protect_empty":  "No protect patterns. Press [A] to add.",
+		"srv.protect_input":  "Enter protect pattern (*, ? wildcards): ",
+		"srv.protect_saved":  "Saved",
 
 		// Settings
 		"set.title":       "Settings",
@@ -177,6 +184,7 @@ func init() {
 		"browser.cancel":           "Cancel",
 		"browser.delete_err":       "Delete: ",
 		"browser.help":             "  ↑↓ Nav  Enter: open  Space: select  D: delete  Esc: cancel",
+		"browser.open":             "Browse",
 
 		// Remote browser
 		"remote.title":            "🌐 Remote",

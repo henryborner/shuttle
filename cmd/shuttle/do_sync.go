@@ -47,6 +47,8 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	case evt.IsDeleted:
 		h.deletedFiles = append(h.deletedFiles, evt.RelPath)
 		fmt.Printf("  %s  %s\n", util.Pad("DEL", 5), evt.RelPath)
+	case evt.IsProtected:
+		fmt.Printf("  %s  %s\n", util.Pad("PROT", 5), evt.RelPath)
 	default:
 		fmt.Printf("  %s  %s\n", util.Pad("SKIP", 5), evt.RelPath)
 	}
@@ -142,6 +144,7 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			Target:   remotePath,
 			Delete:   task.Options.Delete,
 			Exclude:  task.Options.Exclude,
+			Protect:  server.Protect,
 			Checksum: task.Options.Checksum,
 			DryRun:   dryRun,
 			SkipDots: true,
@@ -164,6 +167,9 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			prefix, stats.TotalFiles, stats.NewFiles, stats.UpdatedFiles)
 		if stats.SkippedFiles > 0 {
 			fmt.Printf(" skipped:%d", stats.SkippedFiles)
+		}
+		if stats.ProtectedFiles > 0 {
+			fmt.Printf(" protected:%d", stats.ProtectedFiles)
 		}
 		if stats.DeletedFiles > 0 {
 			fmt.Printf(" deleted:%d", stats.DeletedFiles)

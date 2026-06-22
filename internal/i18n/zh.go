@@ -136,7 +136,14 @@ func init() {
 		"srv.os_err":      "系统: %v",
 		"srv.stdin_err":   "标准输入: %v",
 		"srv.deploy_err":  "部署: %v", "srv.manual_install": "请手动: scp shuttle_linux user@host:~/ ; ssh host chmod +x ~/shuttle", "srv.read_err": "读取: %v",
-		"srv.verify_err": "验证: %v",
+		"srv.verify_err":     "验证: %v",
+		"srv.protect":        "保护列表",
+		"srv.protect_title":  "🛡 保护列表 - %s",
+		"srv.protect_add":    "添加",
+		"srv.protect_delete": "删除",
+		"srv.protect_empty":  "暂无保护模式，按 [A] 添加",
+		"srv.protect_input":  "输入保护模式（支持 *, ? 通配符）: ",
+		"srv.protect_saved":  "已保存",
 
 		// Settings
 		"set.title":       "设置",
@@ -179,6 +186,7 @@ func init() {
 		"browser.cancel":           "取消",
 		"browser.delete_err":       "删除: ",
 		"browser.help":             "  ↑↓ 导航  Enter: 打开  Space: 选择  D: 删除  Esc: 取消",
+		"browser.open":             "浏览文件",
 
 		// Remote browser
 		"remote.title":            "🌐 远程",

@@ -58,6 +58,15 @@ type serversModel struct {
 	testMsg    string
 	deployed   bool
 	hasAgent   bool // shuttle binary exists on remote
+	// protect editing
+	protectMode     bool
+	protectCursor   int
+	protectSrvIdx   int
+	protectPatterns []string
+	protectAdding   bool
+	protectInput    string
+	protectSaved    bool           // 保存成功提示
+	remoteBrowser   *RemoteBrowser // Tab 呼出远端文件选择器
 }
 
 func newServers(cfg *config.Config, cfgPath string) *serversModel {
@@ -67,6 +76,11 @@ func newServers(cfg *config.Config, cfgPath string) *serversModel {
 func (m *serversModel) Init() tea.Cmd { return nil }
 
 func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
+	// Protect editing mode — handle before all other modes
+	if m.protectMode {
+		return m.protectUpdate(msg)
+	}
+
 	// Update confirmation pending.
 	if m.updateIdx >= 0 {
 		key, ok := msg.(tea.KeyMsg)
@@ -172,6 +186,15 @@ func (m *serversModel) Update(msg tea.Msg) (serversModel, tea.Cmd) {
 	case "u":
 		if m.cursor < len(m.servers) && len(m.servers) > 0 {
 			m.updateIdx = m.cursor
+		}
+	case "p":
+		if m.cursor < len(m.servers) && len(m.servers) > 0 {
+			m.protectMode = true
+			m.protectSrvIdx = m.cursor
+			m.protectPatterns = append([]string{}, m.servers[m.cursor].Protect...)
+			m.protectCursor = 0
+			m.protectAdding = false
+			m.protectInput = ""
 		}
 	}
 	return *m, nil
@@ -403,6 +426,7 @@ func (m *serversModel) saveServer() {
 		Pass:    strings.TrimSpace(m.formPass),
 	}
 	if m.editIdx >= 0 && m.editIdx < len(m.servers) {
+		s.Protect = m.servers[m.editIdx].Protect // 保留保护列表
 		m.servers[m.editIdx] = s
 		m.editIdx = -1
 	} else {
@@ -457,6 +481,9 @@ func (m *serversModel) backspaceField() {
 }
 
 func (m *serversModel) View(width, height int) string {
+	if m.protectMode {
+		return m.protectView(width, height)
+	}
 	if m.updateIdx >= 0 && m.updateIdx < len(m.servers) {
 		srvName := m.servers[m.updateIdx].Name
 		body := fmt.Sprintf("  %s\n\n  %s \"%s\"？\n\n  [Y] %s  [N] %s",
@@ -500,7 +527,7 @@ func (m *serversModel) View(width, height int) string {
 	if m.testMsg != "" {
 		body += "\n  " + m.testMsg
 	}
-	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [U]"+i18n.T("srv.update_short")+"  "+i18n.T("help.nav"))
+	body += "\n" + StyleMuted.Render("  "+i18n.T("help.add")+"  [E/Enter]"+i18n.T("srv.edit")+"  "+i18n.T("help.delete")+"  [U]"+i18n.T("srv.update_short")+"  [P]"+i18n.T("srv.protect")+"  "+i18n.T("help.nav"))
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
@@ -639,6 +666,131 @@ func asyncUpdateAgent(srv config.Server) tea.Cmd {
 		}
 		return deployResultMsg{ok: false, msg: i18n.T("srv.manual_install")}
 	}
+}
+
+// protectUpdate handles key events in protect editing mode.
+func (m *serversModel) protectUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
+	// Remote browser active — delegate to it
+	if m.remoteBrowser != nil {
+		m.remoteBrowser.Update(msg)
+		if m.remoteBrowser.IsDone() {
+			if !m.remoteBrowser.WasCancelled() {
+				sel := m.remoteBrowser.SelectedPath()
+				m.protectInput = sel
+				m.protectAdding = true
+			}
+			m.remoteBrowser.Close()
+			m.remoteBrowser = nil
+		}
+		return *m, nil
+	}
+
+	// Text input mode for adding a pattern
+	if m.protectAdding {
+		key, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return *m, nil
+		}
+		switch key.String() {
+		case "esc":
+			m.protectAdding = false
+			m.protectInput = ""
+		case "tab":
+			m.remoteBrowser = NewRemoteBrowser(m.servers[m.protectSrvIdx])
+			return *m, nil
+		case "enter":
+			pat := strings.TrimSpace(m.protectInput)
+			if pat != "" {
+				m.protectPatterns = append(m.protectPatterns, pat)
+				m.protectCursor = len(m.protectPatterns) - 1
+				m.servers[m.protectSrvIdx].Protect = m.protectPatterns
+				m.saveConfig()
+				m.protectSaved = true
+			}
+			m.protectAdding = false
+			m.protectInput = ""
+		case "backspace":
+			if len(m.protectInput) > 0 {
+				m.protectInput = m.protectInput[:len(m.protectInput)-1]
+			}
+		default:
+			if len(key.String()) == 1 && key.String()[0] >= 32 && key.String()[0] != 127 {
+				m.protectInput += key.String()
+			}
+		}
+		return *m, nil
+	}
+
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return *m, nil
+	}
+	switch key.String() {
+	case "esc":
+		m.protectMode = false
+	case "up", "k":
+		if m.protectCursor > 0 {
+			m.protectCursor--
+		}
+		m.protectSaved = false
+	case "down", "j":
+		if m.protectCursor < len(m.protectPatterns)-1 {
+			m.protectCursor++
+		}
+		m.protectSaved = false
+	case "a":
+		m.protectAdding = true
+		m.protectInput = ""
+		m.protectSaved = false
+	case "d":
+		if len(m.protectPatterns) > 0 && m.protectCursor < len(m.protectPatterns) {
+			m.protectPatterns = append(m.protectPatterns[:m.protectCursor], m.protectPatterns[m.protectCursor+1:]...)
+			if m.protectCursor >= len(m.protectPatterns) && m.protectCursor > 0 {
+				m.protectCursor--
+			}
+			m.servers[m.protectSrvIdx].Protect = m.protectPatterns
+			m.saveConfig()
+		}
+	}
+	return *m, nil
+}
+
+// protectView renders the protect list editing view.
+func (m *serversModel) protectView(width, height int) string {
+	// Remote browser active — delegate rendering
+	if m.remoteBrowser != nil {
+		return m.remoteBrowser.View(width, height)
+	}
+
+	srvName := m.servers[m.protectSrvIdx].Name
+	title := StyleTitle.Render(fmt.Sprintf(i18n.T("srv.protect_title"), srvName))
+	body := title + "\n\n"
+
+	if m.protectAdding {
+		body += fmt.Sprintf("  %s\n  ▸ %s\n",
+			StyleMuted.Render(i18n.T("srv.protect_input")),
+			StyleWarning.Render(m.protectInput+"▌"))
+		body += "\n" + StyleMuted.Render("  [Tab] "+i18n.T("browser.open")+"  [Enter] "+i18n.T("btn.save")+"  [Esc] "+i18n.T("btn.cancel"))
+	} else {
+		if m.protectSaved {
+			body += "  " + StyleSuccess.Render("✓ "+i18n.T("srv.protect_saved")) + "\n\n"
+			m.protectSaved = false // 一闪而过，下次按键清掉
+		}
+		if len(m.protectPatterns) == 0 {
+			body += "  " + StyleMuted.Render(i18n.T("srv.protect_empty")) + "\n"
+		} else {
+			for i, p := range m.protectPatterns {
+				cur := "  "
+				if i == m.protectCursor {
+					cur = StyleInfo.Render("▸ ")
+				}
+				body += fmt.Sprintf("%s🛡 %s\n", cur, StyleWarning.Render(p))
+			}
+		}
+		body += "\n" + StyleMuted.Render("  [A] "+i18n.T("srv.protect_add")+"  [D] "+i18n.T("srv.protect_delete")+"  [Esc] "+i18n.T("btn.back"))
+	}
+
+	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
 // tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.

@@ -27,12 +27,13 @@ type Options struct {
 }
 
 type Server struct {
-	Name    string `yaml:"name"`
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port"`
-	User    string `yaml:"user"`
-	KeyFile string `yaml:"key_file"` // SSH 私钥路径
-	Pass    string `yaml:"password"` // 或密码（不推荐）
+	Name    string   `yaml:"name"`
+	Host    string   `yaml:"host"`
+	Port    int      `yaml:"port"`
+	User    string   `yaml:"user"`
+	KeyFile string   `yaml:"key_file"`          // SSH 私钥路径
+	Pass    string   `yaml:"password"`          // 或密码（不推荐）
+	Protect []string `yaml:"protect,omitempty"` // 保护模式：远端绝不覆盖/删除的文件路径
 }
 
 // Config 顶层配置

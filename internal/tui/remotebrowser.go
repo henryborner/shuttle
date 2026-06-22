@@ -162,6 +162,9 @@ func (rb *RemoteBrowser) Update(msg interface{}) {
 					newPath = path.Join(rb.root, item.name)
 				}
 				rb.loadDir(newPath)
+			} else {
+				rb.selected = path.Join(rb.root, item.name)
+				rb.done = true
 			}
 		}
 	case " ":

@@ -89,6 +89,12 @@ func RenderProgress(done, total int, width int) string {
 		barWidth = 10
 	}
 	filled := int(float64(done) / float64(total) * float64(barWidth))
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > barWidth {
+		filled = barWidth
+	}
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 	pct := float64(done) / float64(total) * 100
 	return StyleInfo.Render(bar) + StyleMuted.Render("  "+pctStr(pct))

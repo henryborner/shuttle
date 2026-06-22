@@ -41,6 +41,12 @@ type syncMsg struct {
 	bytesTotal int64
 	savedPct   float64
 	err        string
+	// Breakdown for done message
+	newFiles       int
+	updatedFiles   int
+	deletedFiles   int
+	skippedFiles   int
+	protectedFiles int
 }
 
 // deleteConfirmStage tracks multi-level delete confirmation
@@ -69,6 +75,12 @@ type syncProgress struct {
 	bytesSent  int64
 	bytesTotal int64
 	savedPct   float64
+	// Breakdown
+	newFiles       int
+	updatedFiles   int
+	deletedFiles   int
+	skippedFiles   int
+	protectedFiles int
 }
 
 type Page int
@@ -77,8 +89,8 @@ const (
 	PageDashboard Page = iota
 	PageMappings
 	PageServers
-	PageSettings
 	PageExplorer
+	PageSettings
 )
 
 func pageNames() []string {
@@ -86,8 +98,8 @@ func pageNames() []string {
 		i18n.T("nav.dashboard"),
 		i18n.T("nav.mappings"),
 		i18n.T("nav.servers"),
-		i18n.T("nav.settings"),
 		i18n.T("nav.explorer"),
+		i18n.T("nav.settings"),
 	}
 }
 
@@ -245,6 +257,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "done":
 			m.syncing = false
 			m.sp.savedPct = sm.savedPct
+			m.sp.newFiles = sm.newFiles
+			m.sp.updatedFiles = sm.updatedFiles
+			m.sp.deletedFiles = sm.deletedFiles
+			m.sp.skippedFiles = sm.skippedFiles
+			m.sp.protectedFiles = sm.protectedFiles
 			if sm.err != "" {
 				m.syncErr = sm.err
 			}
@@ -266,7 +283,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activePage--
 			}
 		case "right":
-			if m.activePage < PageExplorer {
+			if m.activePage < PageSettings {
 				m.activePage++
 			}
 		case "enter":
@@ -305,13 +322,13 @@ func (m *Model) dispatchUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.servers.Update(msg)
 		m.servers = &updated
 		return m, cmd
-	case PageSettings:
-		updated, cmd := m.settings.Update(msg)
-		m.settings = &updated
-		return m, cmd
 	case PageExplorer:
 		updated, cmd := m.explorer.Update(msg)
 		m.explorer = &updated
+		return m, cmd
+	case PageSettings:
+		updated, cmd := m.settings.Update(msg)
+		m.settings = &updated
 		return m, cmd
 	}
 	return m, nil
@@ -391,10 +408,10 @@ func (m *Model) View() string {
 		pageView = m.mappings.View(m.width, pageH)
 	case PageServers:
 		pageView = m.servers.View(m.width, pageH)
-	case PageSettings:
-		pageView = m.settings.View(m.width, pageH)
 	case PageExplorer:
 		pageView = m.explorer.View(m.width, pageH)
+	case PageSettings:
+		pageView = m.settings.View(m.width, pageH)
 	}
 
 	top := StyleTitle.Render("🚀 "+i18n.T("app.title")) +
@@ -431,6 +448,26 @@ func (m *Model) View() string {
 			m.sp.taskName, m.sp.filesDone, util.FormatBytes(m.sp.bytesSent), errPart))
 		if m.sp.savedPct > 0 {
 			syncLine += StyleInfo.Render(fmt.Sprintf(" | Δ %.0f%%", m.sp.savedPct))
+		}
+		// Breakdown
+		parts := []string{}
+		if m.sp.newFiles > 0 {
+			parts = append(parts, fmt.Sprintf("new:%d", m.sp.newFiles))
+		}
+		if m.sp.updatedFiles > 0 {
+			parts = append(parts, fmt.Sprintf("upd:%d", m.sp.updatedFiles))
+		}
+		if m.sp.deletedFiles > 0 {
+			parts = append(parts, StyleDanger.Render(fmt.Sprintf("del:%d", m.sp.deletedFiles)))
+		}
+		if m.sp.skippedFiles > 0 {
+			parts = append(parts, fmt.Sprintf("skip:%d", m.sp.skippedFiles))
+		}
+		if m.sp.protectedFiles > 0 {
+			parts = append(parts, StyleInfo.Render(fmt.Sprintf("prot:%d", m.sp.protectedFiles)))
+		}
+		if len(parts) > 0 {
+			syncLine += "\n  " + strings.Join(parts, "  ")
 		}
 	}
 
@@ -503,6 +540,7 @@ func (m *Model) startSync(task config.Task) {
 		stats, err := engine.Sync(transport.SyncOptions{
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
+			Protect:  srv.Protect,
 			Checksum: task.Options.Checksum, SkipDots: true,
 			Workers: m.cfg.Workers, Flat: task.Options.Flat,
 		})
@@ -520,6 +558,9 @@ func (m *Model) startSync(task config.Task) {
 			kind: "done", taskName: task.Name, savedPct: savedPct,
 			fileDone: stats.TotalFiles, fileTotal: stats.TotalFiles,
 			bytesSent: stats.SentBytes, bytesTotal: stats.TotalBytes,
+			newFiles: stats.NewFiles, updatedFiles: stats.UpdatedFiles,
+			deletedFiles: stats.DeletedFiles, skippedFiles: stats.SkippedFiles,
+			protectedFiles: stats.ProtectedFiles,
 		}
 	}()
 }
@@ -627,6 +668,11 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 				}
 			}
 			if !found {
+				// 保护过滤：受保护的文件不列入删除清单
+				rf := remoteFiles[name]
+				if transport.MatchProtect(rf.Path, srv.Protect) {
+					continue
+				}
 				orphans = append(orphans, name)
 			}
 		}
