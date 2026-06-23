@@ -97,8 +97,10 @@ func TestDeltaCost(t *testing.T) {
 	fmt.Println("  ╚══════════════════════════════════════╝")
 
 	t4 := time.Now()
-	_ = fi.Size() == fi.Size()
-	_ = fi.ModTime().Truncate(time.Second).Equal(fi.ModTime().Truncate(time.Second))
+	size1, size2 := fi.Size(), fi.Size()
+	_ = size1 == size2
+	mod1, mod2 := fi.ModTime(), fi.ModTime()
+	_ = mod1.Truncate(time.Second).Equal(mod2.Truncate(time.Second))
 	t5 := time.Now()
 	fmt.Printf("  Metadata compare: %v  (size + modtime truncated to sec)\n", t5.Sub(t4))
 
