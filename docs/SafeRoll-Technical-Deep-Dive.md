@@ -40,27 +40,31 @@ result[i] = saturate_to_int16(src1[2i]*src2[2i] + src1[2i+1]*src2[2i+1])
 
 The saturation ceiling is 32767. Any pair sum exceeding this is clamped.
 
-### 2.2 Saturation Boundary
+### 2.2 Why Int16 Arithmetic Is Insufficient
 
-Rsync's T2 weight table is `{64, 63, 62, ..., 1}`. For a pair `(64, 63)` operating on two `0xFF` bytes:
-
-```
-64 * 255 + 63 * 255 = 255 * 127 = 32385  ← still under 32768 (safe in isolation)
-```
-
-However, rsync's algorithm then combines two 32-byte halves with `VPADDW` (also saturating):
+With `CHAR_OFFSET=0` and raw bytes (max 255), rsync's `VPMADDUBSW` pair sums top out at:
 
 ```
-half1 pair max: 64*255 + 63*255 = 32385
-half2 pair max: 32*255 + 31*255 = 16065
-VPADDW result:   32385 + 16065 = 48450  ← EXCEEDS 32767, SATURATES
+64 × 255 + 63 × 255 = 32385  ← just under the 32767 int16 ceiling
 ```
 
-The saturation is silent — no exception, no error code, just silently wrong results. With `CHAR_OFFSET=0` and typical file data (average byte ~128), this boundary is rarely crossed. But it is mathematically present.
+This is safe in isolation — the saturated-multiply-add (`VPMADDUBSW`) does not clip for any byte pattern with CHAR_OFFSET=0.
+
+However, rsync's pipeline narrows intermediate values through multiple int16 stages. After `VPMADDUBSW` emits int16 pair sums, the two 32-byte halves are combined with `VPADDW` (wraparound int16 addition), then shifted and accumulated into int32 accumulators via `VPADDD`. While `VPADDW` itself wraps rather than saturates, the preceding int16 constraint means that any intermediate overflow silently corrupts the running checksum — the wraparound is just as wrong as saturation would be.
+
+With typical file data under CHAR_OFFSET=0, this boundary stays comfortably distant. But the int16 bottleneck is architecturally present.
 
 ### 2.3 Interaction with Non-Zero CHAR_OFFSET
 
-Shuttle uses `CHAR_OFFSET=31`, adding 31 to every byte before checksum computation. Each byte's contribution increases by 31, and the cumulative effect across 32 groups of 4 bytes pushes intermediate s1 and s2 values closer to the int16 ceiling. The `CHAR_OFFSET`-dependent correction term (`528*CHAR_OFFSET` per 32 bytes) interacts with the lane-distribution logic in rsync's reduction phase, which was calibrated for `CHAR_OFFSET=0`.
+Shuttle uses `CHAR_OFFSET=31`. If this offset were baked into bytes before `VPMADDUBSW` (as the raw iterative formula does):
+
+```
+64 × (255 + 31) + 63 × (255 + 31) = 286 × 127 = 36322  ← EXCEEDS 32767
+```
+
+`VPMADDUBSW` would saturate this to 32767 — silent, unrecoverable corruption.
+
+Rsync's AVX2 path currently ships with `#define CHAR_OFFSET 0` in the assembly file, and the conditional `#if CHAR_OFFSET != 0` block (which adds `32 × CHAR_OFFSET` to s1 and `528 × CHAR_OFFSET` to s2 per iteration via `VPADDD`) is dead code in the default build. Even if enabled, these scalar corrections operate at the int32 accumulator level and do not retroactively fix saturation that occurred earlier in the int16 multiply-accumulate stage. The reduction-phase constants (e.g., the `×64` multiplier applied via `VPSLLD`) were calibrated for CHAR_OFFSET=0 and do not account for a non-zero offset's interaction with the lane-distribution logic.
 
 ## 3. SafeRoll Design
 

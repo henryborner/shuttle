@@ -116,7 +116,7 @@ The remote side generates block signatures using `GenerateSignatureReader`, whic
 
 ## 3. SafeRoll: AVX2 SIMD Checksum Engine
 
-> **Why SafeRoll?** Shuttle uses `CHAR_OFFSET=31`, following the original Tridgell thesis. Modern rsync defaults to 0 — a pragmatic choice for backward compatibility with older protocol versions, as noted in `rsync.h`: *"a non-zero CHAR_OFFSET makes the rolling sum stronger, but is incompatible with older versions"*. Both values have valid reasons. However, `CHAR_OFFSET=31` pushes byte contributions higher, and rsync's AVX2 path — designed around `CHAR_OFFSET=0` — uses saturating int16 arithmetic that can overflow with the larger offset. SafeRoll provides an alternative SIMD engine that handles `CHAR_OFFSET=31` without saturation, while still learning from rsync's pioneering approach to SIMD-accelerated checksums.
+> **Why SafeRoll?** Shuttle uses `CHAR_OFFSET=31`, following the original Tridgell thesis. Modern rsync defaults to 0 — a pragmatic choice for backward compatibility with older protocol versions, as noted in `rsync.h`: *"a non-zero CHAR_OFFSET makes the rolling sum stronger, but is incompatible with older versions"*. Both values have valid reasons. However, `CHAR_OFFSET=31` pushes byte contributions higher, and rsync's AVX2 path — designed around `CHAR_OFFSET=0` — uses an int16-based arithmetic pipeline that lacks the numeric headroom for larger offsets. SafeRoll provides an alternative SIMD engine that operates entirely in int32, eliminating any overflow risk while still learning from rsync's pioneering approach to SIMD-accelerated checksums.
 
 ### 3.1 Motivation
 
@@ -126,15 +126,13 @@ Rsync's AVX2-accelerated path (in `simd-checksum-avx2.S`) uses `VPMADDUBSW`, whi
 
 ### 3.2 Why Rsync's AVX2 Path and CHAR_OFFSET=31 Don't Mix
 
-Rsync's `simd-checksum-avx2.S` processes 64 bytes per iteration with a T2 weight table `{64,63,...,1}`. After computing weighted sums for two 32-byte halves, it combines them with `VPADDW` — a *saturating* int16 addition:
+Rsync's `simd-checksum-avx2.S` processes 64 bytes per iteration with a T2 weight table `{64,63,...,1}`. The core instruction is `VPMADDUBSW`, which multiplies unsigned bytes by signed weights, sums adjacent pairs, and saturates the result to int16. With `CHAR_OFFSET=31` baked into each byte, a worst-case pair calculation exceeds the int16 ceiling:
 
 ```
-Half 1 weighted pair: 64×255 + 63×255 = 32385 (safe individually)
-Half 2 weighted pair: 32×255 + 31×255 = 16065
-VPADDW result:        32385 + 16065 = 48450 > 32767 → SATURATES to 32767
+286 × 64 + 286 × 63 = 286 × 127 = 36322  >  32767  →  SATURATES to 32767
 ```
 
-The saturation is silent — no exception, no error flag, just truncated results. For `CHAR_OFFSET=0` with typical file data (byte mean ~128), this boundary is rarely crossed. With `CHAR_OFFSET=31`, each byte contributes 31 units more, making saturation more likely.
+Without offset, the same pair maxes out at 255 × 127 = 32385, safely under the int16 ceiling. With `CHAR_OFFSET=31`, the margin disappears: each byte contributes 31 more units, pushing weighted pair sums past 32767 and into the saturation zone. The clipping is silent — no exception, no error flag, just truncated results.
 
 Additionally, rsync's reduction phase is calibrated for `CHAR_OFFSET=0`; the correction multiplier (×64 from `VPSLLD $6, Y4, Y3`) doesn't account for a non-zero offset.
 
