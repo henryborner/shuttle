@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/henryborner/shuttle/internal/delta"
@@ -60,24 +59,9 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 	remoteFiles := make(map[string]FileInfo)
-	// 按远端父目录分组列出，避免从根目录递归遍历整个文件系统
-	remoteDirs := make(map[string]bool)
-	for _, lf := range localFiles {
-		rp, _ := filepath.Rel(opts.Source, lf.Path)
-		if rp == "." || rp == "" {
-			rp = filepath.Base(opts.Source)
-		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
-			rp = filepath.Join(filepath.Base(opts.Source), rp)
-		}
-		remotePath := filepath.ToSlash(filepath.Join(opts.Target, rp))
-		remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
-		remoteDirs[remoteDir] = true
-	}
-	for dir := range remoteDirs {
-		entries, err := e.transport.ListDirRecursive(dir)
-		if err != nil {
-			continue
-		}
+	// 从远端 target 根目录只遍历一次，避免对每个子目录重复 Walk
+	entries, err := e.transport.ListDirRecursive(opts.Target)
+	if err == nil {
 		for _, f := range entries {
 			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
 			key = strings.TrimPrefix(key, "/")
@@ -137,11 +121,9 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", relPath, fe))
 			}
 		} else {
-			needUpd := lf.Size != rf.Size || !lf.ModTime.Equal(rf.ModTime)
-			if opts.Checksum {
-				needUpd = true
-			}
-			if needUpd {
+			needUpd := lf.Size != rf.Size || !lf.ModTime.Truncate(time.Second).Equal(rf.ModTime.Truncate(time.Second))
+			// checksum 模式：size+mtime 对上时仍进 delta 做内容校验（远端只读不写）
+			if needUpd || opts.Checksum {
 				deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
 			} else {
 				stats.SkippedFiles++
@@ -155,35 +137,37 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		stats.TotalBytes += lf.Size
 	}
 
-	// ── 第二遍：delta 传输（并行 worker pool，hook 回调在主 goroutine 防竞态） ──
+	// ── 第二遍：delta 传输（并行 worker pool，实时回调防 TUI 卡顿） ──
 	if len(deltaJobs) > 0 && !opts.DryRun {
 		workers := opts.Workers
 		if workers <= 0 {
 			workers = 4 // default
 		}
 		sem := make(chan struct{}, workers)
-		type deltaResult struct {
+		resultCh := make(chan struct {
 			job   deltaJob
 			sent  int64
 			saved int64
 			err   error
-		}
-		results := make([]deltaResult, len(deltaJobs))
-		var wg sync.WaitGroup
+		}, len(deltaJobs))
 
-		for i, dj := range deltaJobs {
-			wg.Add(1)
-			go func(idx int, job deltaJob) {
-				defer wg.Done()
+		for _, dj := range deltaJobs {
+			go func(job deltaJob) {
 				sem <- struct{}{}
-				defer func() { <-sem }()
+				e.hook.OnFileStart(job.relPath, job.lf.Size)
 				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath)
-				results[idx] = deltaResult{job, sent, saved, fe}
-			}(i, dj)
+				<-sem
+				resultCh <- struct {
+					job   deltaJob
+					sent  int64
+					saved int64
+					err   error
+				}{job, sent, saved, fe}
+			}(dj)
 		}
-		wg.Wait()
 
-		for _, r := range results {
+		for range deltaJobs {
+			r := <-resultCh
 			stats.UpdatedFiles++
 			stats.SentBytes += r.sent
 			stats.DeltaSaved += r.saved
@@ -277,7 +261,11 @@ func (e *SyncEngine) uploadFile(info localFileInfo, remotePath string) error {
 
 	// Wrap with progress tracking
 	pr := &progressReader{r: f, hook: e.hook, path: info.Path, size: info.Size}
-	return e.transport.PutFile(remotePath, pr, info.Size)
+	if err := e.transport.PutFile(remotePath, pr, info.Size); err != nil {
+		return err
+	}
+	// 同步 mtime，避免下次比对时因上传时间 ≠ 本地修改时间而误判
+	return e.transport.SetModTime(remotePath, info.ModTime)
 }
 
 // progressReader wraps io.Reader to report progress via SyncHook
@@ -372,6 +360,17 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	eng.LoadSignature(sig)
 	insts := eng.Search(lr.data)
 
+	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）
+	// 此时关闭 stdin 通知远端无需重建，避免无意义的磁盘写入
+	if eng.LiteralBytes < int64(sig.BlockSize) {
+		stdin.Close()
+		<-stderrDone
+		// 同步 mtime（以防万一）
+		e.transport.SetModTime(remotePath, info.ModTime)
+		savedBytes = info.Size
+		return 0, savedBytes, nil
+	}
+
 	// 3. 发送指令到远端（stdin 必须还活着）
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
@@ -387,6 +386,9 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	if errBuf.Len() > 0 {
 		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
+
+	// 同步 mtime，避免远端重建后的"当前时间"与本地不一致
+	e.transport.SetModTime(remotePath, info.ModTime)
 
 	savedBytes = int64(len(lr.data)) - eng.LiteralBytes
 	return eng.LiteralBytes, savedBytes, nil

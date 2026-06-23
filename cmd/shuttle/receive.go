@@ -53,10 +53,10 @@ func runReceive(cmd *cobra.Command, args []string) {
 	}
 
 	// 4. 从 stdin 读取指令
+	// 如果发送端关闭 stdin（表示文件完全匹配，无需重建），正常退出
 	instructions, err := delta.WireDecodeInstructions(os.Stdin)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 读取指令失败: %v\n", err)
-		os.Exit(1)
+		os.Exit(0) // sender aborted: content unchanged, nothing to do
 	}
 
 	// 5. 读取 basis 文件用于重建

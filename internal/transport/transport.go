@@ -33,6 +33,7 @@ type Transport interface {
 	Remove(path string) error
 	RemoveRecursive(path string) error
 	Stat(path string) (FileInfo, error)
+	SetModTime(path string, mtime time.Time) error
 	Exec(command string) (stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser, err error)
 }
 
@@ -246,6 +247,14 @@ func (t *SFTPTransport) RemoveRecursive(dir string) error {
 }
 
 // Stat returns file info
+// SetModTime changes the modification time of a remote file.
+func (t *SFTPTransport) SetModTime(path string, mtime time.Time) error {
+	if t.client == nil {
+		return fmt.Errorf("not connected")
+	}
+	return t.client.Chtimes(path, mtime, mtime)
+}
+
 func (t *SFTPTransport) Stat(path string) (FileInfo, error) {
 	if t.client == nil {
 		return FileInfo{}, fmt.Errorf("not connected")

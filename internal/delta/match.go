@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"hash"
 	"io"
-	"sort"
 )
 
 // BlockSum 表示文件B中一个块的校验和
@@ -29,8 +28,6 @@ type Signature struct {
 	FileSize  int64      // 文件原始大小
 }
 
-const hashTableSize = 1 << 16
-
 type hashEntry struct {
 	sum1   uint32
 	idx    int
@@ -38,12 +35,23 @@ type hashEntry struct {
 	length int32
 }
 
+// computeTableSize returns hash table size with ~80% load factor.
+// Same formula as rsync: count/8*10+11, minimum 65536.
+func computeTableSize(blockCount int) uint32 {
+	ts := uint32(blockCount/8)*10 + 11
+	if ts < 65536 {
+		ts = 65536
+	}
+	return ts
+}
+
 // MatchEngine 增量匹配引擎
 type MatchEngine struct {
 	blockSize  int32
 	strongHash func() hash.Hash // 强校验和工厂
 	checksums  []BlockSum       // 目标端发来的校验和列
-	hashTable  [hashTableSize][]hashEntry
+	hashTable  [][]hashEntry    // 动态大小哈希表
+	tableSize  uint32           // 当前表大小
 
 	// 统计
 	HashHits     int
@@ -71,27 +79,30 @@ func (me *MatchEngine) LoadSignature(sig *Signature) {
 }
 
 func (me *MatchEngine) buildHashTable() {
-
-	for i := range me.hashTable {
-		me.hashTable[i] = me.hashTable[i][:0]
-	}
+	// Dynamic table size: ~80% load factor, same formula as rsync.
+	// Odd size ensures modulo distributes across all buckets.
+	ts := computeTableSize(len(me.checksums))
+	me.tableSize = ts
+	me.hashTable = make([][]hashEntry, ts)
 
 	for i, cs := range me.checksums {
-		h := uint16(cs.Sum1 & 0xFFFF)
+		var h uint32
+		if ts == 65536 {
+			// Traditional: (s1+s2) & 0xFFFF for 16-bit hash.
+			// Using s1+s2 (like rsync's SUM2HASH2) gives much better
+			// distribution than s1 alone.
+			h = (cs.Sum1 + cs.Sum1>>16) & 0xFFFF
+		} else {
+			// Large table: full 32-bit sum modulo odd table size.
+			// Odd divisor ensures high bits of sum2 contribute.
+			h = cs.Sum1 % ts
+		}
 		me.hashTable[h] = append(me.hashTable[h], hashEntry{
 			sum1:   cs.Sum1,
 			idx:    i,
 			offset: cs.Offset,
 			length: cs.Length,
 		})
-	}
-
-	for i := range me.hashTable {
-		if len(me.hashTable[i]) > 1 {
-			sort.Slice(me.hashTable[i], func(a, b int) bool {
-				return me.hashTable[i][a].sum1 < me.hashTable[i][b].sum1
-			})
-		}
 	}
 }
 
@@ -114,8 +125,14 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 	for offset+int64(me.blockSize) <= int64(len(data)) {
 		matched := false
 
-		// Level 1: 16-bit 哈希查表
-		h := uint16(rs.Value() & 0xFFFF)
+		// Level 1: hash table lookup
+		var h uint32
+		if me.tableSize == 65536 {
+			// Traditional: (s1+s2) & 0xFFFF — matches buildHashTable
+			h = (rs.S1() + rs.S2()) & 0xFFFF
+		} else {
+			h = rs.Value() % me.tableSize
+		}
 		bucket := me.hashTable[h]
 
 		if len(bucket) > 0 {
