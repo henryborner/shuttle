@@ -18,9 +18,10 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	LEAQ    ones<>+0(SB), AX
 	VMOVDQU (AX), Y15             // all-1s (signed, for s1)
 	LEAQ    mul_T2<>+0(SB), AX
-	VMOVDQU (AX), Y7              // weights [64..33] (read-only, loaded once)
+	VMOVDQU (AX), Y7              // weights [64..33]
+	VMOVDQU 32(AX), Y13           // weights [32..1]  (both preloaded once)
 	VPXOR   Y5, Y5, Y5            // zero reg for VPUNPCK widening
-	VPXOR   X12, X12, X12         // s2 weighted accumulator = 0
+	VPXOR   Y12, Y12, Y12         // s2 weighted accumulator = 0
 
 	MOVL    (CX), R10             // s1 scalar
 	MOVL    (R8), R11             // s2 scalar
@@ -79,17 +80,14 @@ skip_prefetch:
 	// s2: VPMADDUBSW × byte weights → VPUNPCK widen → accumulate in Y12
 	// ═══════════════════════════════════════
 
-	LEAQ    mul_T2<>+32(SB), AX
-	VMOVDQU (AX), Y6             // weights [32..1] (overwritten each iter)
-
-	// First 32B × [64..33] (Y7 loaded once at init)
+	// First 32B × [64..33] (Y7 preloaded once)
 	VPMADDUBSW Y7, Y2, Y2        // weights(signed) × data(unsigned) → 16 int16
 	VPUNPCKLWD Y5, Y2, Y3
 	VPUNPCKHWD Y5, Y2, Y2
 	VPADDD  Y2, Y3, Y2           // Y2 = 8 int32 for first 32B
 
-	// Second 32B × [32..1]
-	VPMADDUBSW Y6, Y8, Y6        // weights(signed) × data(unsigned) → 16 int16
+	// Second 32B × [32..1] (Y13 preloaded once)
+	VPMADDUBSW Y13, Y8, Y6       // weights(signed) × data(unsigned) → 16 int16
 	VPUNPCKLWD Y5, Y6, Y3
 	VPUNPCKHWD Y5, Y6, Y6
 	VPADDD  Y6, Y3, Y6           // Y6 = 8 int32 for second 32B
