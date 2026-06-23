@@ -8,7 +8,7 @@
 
 > Config-driven · Delta transfer · AVX2 engine · TUI · SFTP · Protect list · Bilingual
 
-**Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a custom SafeRoll AVX2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
+**Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a ported rsync AVX2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
 
 ```powershell
 shuttle push web          # sync a task
@@ -102,7 +102,7 @@ tasks:
 ```
 cmd/shuttle/          ← Cobra CLI
 internal/
-├── delta/            ← Delta algorithm + AVX2 SafeRoll checksum engine
+├── delta/            ← Delta algorithm + AVX2 checksum engine
 ├── transport/        ← SFTP + SyncEngine + Hook + mmap
 ├── config/           ← YAML parsing
 ├── i18n/             ← EN/ZH translations

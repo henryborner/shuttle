@@ -8,7 +8,7 @@
 
 > 配置文件驱动 · 增量传输 · rsync AVX2 校验和 · TUI 面板 · SFTP · 保护列表 · 中英双语
 
-**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 rsync 算法，自研 SafeRoll AVX2 SIMD 校验和引擎，通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
+**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 rsync 算法，移植 rsync AVX2 SIMD 校验和引擎，通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
 
 ```powershell
 shuttle push web          # 一键推送
@@ -102,7 +102,7 @@ tasks:
 ```
 cmd/shuttle/          ← Cobra CLI 入口
 internal/
-├── delta/            ← 增量算法 + AVX2 SafeRoll 校验和引擎
+├── delta/            ← 增量算法 + AVX2 校验和引擎
 ├── transport/        ← SFTP 传输 + SyncEngine + Hook + mmap
 ├── config/           ← YAML 配置解析
 ├── i18n/             ← 中英双语
