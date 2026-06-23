@@ -1,4 +1,3 @@
-// Copyright 2026 The Shuttle Authors.
 // AVX2 checksum: 64B/iter, VPMADDUBSW for s1+s2,
 // VPMOVSXWD sign-extend (compatible with signed bytes + rolling).
 // CHAR_OFFSET post-correction in Go.
