@@ -1,210 +1,197 @@
-# RSync → Shuttle AVX2 翻译手册
+# Rsync → Shuttle AVX2 Translation Guide
 
-## 概览
+## Overview
 
-Shuttle 的 `rolling_amd64.s` 移植自 rsync 的校验和算法。rsync 有三个 AVX2 实现：
+Shuttle's `rolling_amd64.s` ports the rsync checksum algorithm to Go assembly. Rsync provides three AVX2 implementations:
 
-| 文件 | 类型 | 策略 |
-|------|------|------|
-| `simd-checksum-avx2.S` | 手写 GAS 汇编 | 向量累积 + 延迟归约 |
-| `simd-checksum-x86_64.cpp:get_checksum1_avx2_64` | C++ intrinsics | 交错加载 + int16 域归约 |
-| `simd-checksum-x86_64.cpp:get_checksum1_ssse3_32` | C++ intrinsics | **左移**归约（SSSE3） |
+| File | Style | Strategy |
+|------|-------|----------|
+| `simd-checksum-avx2.S` | hand-written GAS asm | vector accumulation + deferred reduction |
+| `simd-checksum-x86_64.cpp:get_checksum1_avx2_64` | C++ intrinsics | interleaved load + int16-domain reduction |
+| `simd-checksum-x86_64.cpp:get_checksum1_ssse3_32` | C++ intrinsics | left-shift reduction (SSSE3) |
 
-我们的最终方案：**VPMADDUBSW 指令来自 rsync，归约保持逐轮标量（不用延迟归约）**。
+Our approach: **VPMADDUBSW instructions from rsync, per-iteration scalar reduction (no deferred reduction).**
 
 ---
 
-## 1. 校验和公式
+## 1. Checksum Formula
 
-### rsync 原始 C 代码（checksum.c）
+### rsync scalar C (checksum.c)
 
 ```c
-schar *buf = (schar *)buf1;   // 有符号字节！
+schar *buf = (schar *)buf1;   // signed bytes!
 s1 = s2 = 0;
 for (i = 0; i < (len-4); i+=4) {
     s2 += 4*(s1 + buf[i]) + 3*buf[i+1] + 2*buf[i+2] + buf[i+3] + 10*CHAR_OFFSET;
     s1 += buf[i] + buf[i+1] + buf[i+2] + buf[i+3] + 4*CHAR_OFFSET;
 }
-// 尾部逐字节
-for (; i < len; i++) {
-    s1 += buf[i] + CHAR_OFFSET;
-    s2 += s1;
-}
+for (; i < len; i++) { s1 += buf[i] + CHAR_OFFSET; s2 += s1; }
 ```
 
-关键事实：rsync 把字节当作 **`schar`（有符号 char）**。0xFF = -1，不是 255。
+Key fact: rsync treats bytes as **`schar` (signed char)**. `0xFF` = `-1`, not `255`.
 
-### Shuttle 对应（rolling_generic.go / rolling_fast_amd64.go）
+### Shuttle equivalent
 
 ```go
-// 改为 signed，匹配 rsync
+// switched to signed to match rsync
 for _, b := range data {
     s1 += uint32(int8(b)) + CHAR_OFFSET
     s2 += s1
 }
 ```
 
-`CHAR_OFFSET`：rsync=0，shuttle=31。在 Go 层后修正。
+`CHAR_OFFSET`: rsync=0, shuttle=31. Applied as Go-level post-correction.
 
 ---
 
-## 2. 指令翻译
+## 2. Instruction Translation
 
-### 2.1 VPMADDUBSW — 字节对求和 / 加权求和
+### 2.1 VPMADDUBSW — byte-pair sums / weighted sums
 
-**rsync ASM（Intel 语法）：**
+**rsync ASM (Intel syntax):**
 ```asm
 vpmaddubsw ymm0, ymm15, ymm2   # ymm15(unsigned) × ymm2(signed) → ymm0
 ```
+Intel manual: `src1=unsigned, src2=signed`.
 
-Intel 手册：`src1=unsigned, src2=signed`。
-
-**Go asm（Plan 9）：**
+**Go asm (Plan 9):**
 ```asm
 VPMADDUBSW Y2, Y15, Y0         # Y2(signed) × Y15(unsigned) → Y0
 ```
 
-⚠️ **Go asm 的操作数角色反转！** `src1=signed, src2=unsigned`，和 Intel 手册相反。
+⚠️ **Go asm operand roles are SWAPPED.** `src1=signed, src2=unsigned` — opposite of Intel docs.
 
-我们通过诊断汇编验证了这一点：
+Verified via diagnostic assembly:
 ```
-VPMADDUBSW data, ones   → data 被当 signed（0xFF→-1，-1×1+ -1×1 = -2）
-VPMADDUBSW ones, data   → data 被当 unsigned（0xFF→255，255×1+255×1=510）
+VPMADDUBSW data, ones   → data treated as signed   (0xFF→-1, -1×1+-1×1 = -2)
+VPMADDUBSW ones, data   → data treated as unsigned (0xFF→255, 255×1+255×1 = 510)
 ```
 
-**Shuttle 的选择：** 数据在 src1（signed），ones/weights 在 src2（unsigned），匹配 rsync 的 signed 语义。
+**Shuttle choice:** data in src1 (signed), ones/weights in src2 (unsigned), matching rsync's signed semantics.
 
-### 2.2 VPUNPCKLWD vs VPMOVSXWD — int16→int32 扩展
+### 2.2 VPUNPCKLWD vs VPMOVSXWD — int16→int32 widening
 
-**rsync ASM 不用这两个指令做扩展**——它用 `VPADDD` 隐式把 int16 对当做 int32 累加，配合延迟归约。
+Rsync ASM does not widen int16→int32 explicitly — it relies on `VPADDD` to implicitly pair adjacent int16 as int32, combined with deferred reduction.
 
-我们不用延迟归约，需要显式把 int16 扩展为 int32 再逐轮求和。
+We use per-iteration reduction, so explicit widening is needed.
 
-**选项 A：VPUNPCKLWD/VPUNPCKHWD（零扩展）**
-```asm
-VPUNPCKLWD Y5(zero), Y0(data), Y3
-```
-- 问题：只做零扩展。signed 0xFF 变成 65534（不是 -2）。
-- 只能处理非负 int16（unsigned byte 没问题，signed byte 不行）。
+| Instruction | Extension | Signed? | Works? |
+|---|---|---|---|
+| `VPUNPCKLWD` | zero-extend | ❌ | Only for unsigned (0xFF→65534, not -2) |
+| `VPMOVSXWD` | sign-extend | ✅ | Correct for signed (0xFF→-2) |
 
-**选项 B：VPMOVSXWD（符号扩展）✅**
-```asm
-VPMOVSXWD X0, Y3              # 把 8 个 int16 符号扩展为 8 个 int32
-```
-- 正确保持符号。0xFF（-2）→ int32(-2)。
-- 需要先提取低 128 位（`VEXTRACTI128 $1`）分别处理两个 lane。
+We chose **VPMOVSXWD**. Requires `VEXTRACTI128 $1` to handle both lanes of the YMM register separately.
 
-### 2.3 XMM/YMM 寄存器别名
+### 2.3 XMM/YMM Register Aliasing
 
 ```asm
-VPADDD  Y6, Y0, Y0            // Y0=8 int32; X0 自动 = Y0 的低 4 个
-VEXTRACTI128 $1, Y0, X1       // X1 = Y0 的高 4 个
-VPADDD  X1, X0, X0            // X0 = 低4 + 高4
+VPADDD  Y6, Y0, Y0            // Y0 = 8×int32; X0 implicitly = low 4 of Y0
+VEXTRACTI128 $1, Y0, X1       // X1 = high 4 of Y0
+VPADDD  X1, X0, X0            // X0 = low4 + high4
 ```
 
-**X0 不是"未初始化"**——它是 Y0 的低 128 位别名。写入 Y0 自动更新 X0。
+**X0 is NOT uninitialized** — it is the low-128-bit alias of Y0. Writing Y0 automatically updates X0.
 
-这个技巧省了 `VEXTRACTI128 $0, Y0, X0` 这一步。AI 审查经常误判。
+This saves one `VEXTRACTI128 $0, Y0, X0` instruction. AI code reviewers frequently misdiagnose this pattern.
 
-### 2.4 权重表
+### 2.4 Weight Table Encoding
 
-**rsync (simd-checksum-avx2.S)：**
+**rsync:**
 ```asm
-.mul_T2:
-    .byte 64,63,62,...,1       # 64 字节，直排
+.mul_T2: .byte 64,63,62,...,1       # 64 flat bytes
 ```
 
-**Shuttle (Go asm DATA)：**
+**Go asm (`DATA /8` stores 8 bytes as little-endian uint64):**
 ```asm
 DATA mul_T2<>+0(SB)/8, $0x393a3b3c3d3e3f40  // 64,63,62,61,60,59,58,57
 ```
 
-Go asm 的 `DATA /8` 存 8 字节小端序 uint64。`0x40=64, 0x3f=63, ...`，小端序时 LSB 在前：`0x393a3b3c3d3e3f40`。
+`0x40=64, 0x3f=63, ...` → LE-encoded as `0x393a3b3c3d3e3f40`.
 
 ---
 
-## 3. 完整对照表
+## 3. Side-by-Side Translation
 
-### 初始化
+### 3.1 Initialization
 
-| 步骤 | rsync ASM | Shuttle Go asm | 差异 |
-|------|-----------|---------------|------|
-| 最小长度检查 | `len > 128`? | `len >= 64`? | rsync 要求≥128（至少 2 轮），我们只需 64 |
-| 加载权重 | `vmovntdqa ymm7, [rax]` | `VMOVDQU (AX), Y7` | rsync 用非临时对齐加载，我们用普通非对齐 |
-| 全 1 表 | `vpcmpeqd + vpabsb` | `VMOVDQU ones<>` | rsync 计算，我们查表 |
-| 初始 s1 | `vmovd xmm6, [rcx]` | `MOVL (CX), R10` | rsync 放向量，我们放标量 |
+| Step | rsync ASM | Shuttle Go asm | Notes |
+|------|-----------|---------------|-------|
+| Min length gate | `jle .exit` (len < 128) | `CMPQ SI,$64; JL bail` | rsync needs ≥2 iters; we need ≥1 |
+| Load weights | `vmovntdqa ymm7,[rax]` | `VMOVDQU (AX),Y7` | NT-aligned vs unaligned |
+| All-ones table | `vpcmpeqd+vpabsb` | `VMOVDQU ones<>` | computed vs table |
+| Initial s1 | `vmovd xmm6,[rcx]` | `MOVL (CX),R10` | vector vs scalar accumulator |
 
-### s1 计算
+### 3.2 s1 Computation
 
-| 步骤 | rsync ASM | Shuttle Go asm |
+| Step | rsync ASM | Shuttle Go asm |
 |------|-----------|---------------|
-| 字节对和 | `vpmaddubsw ymm0, ymm15, ymm2` | `VPMADDUBSW Y2, Y15, Y0` |
-| 操作数语义 | src1=ymm15(unsigned), src2=ymm2(signed) | src1=Y2(signed), src2=Y15(unsigned) |
-| 合并两半 | `vpaddw ymm5, ymm5, ymm0` (int16) | 不用 |
-| 进位处理 | `vpsrld ymm0, ymm5, 16; vpaddw ymm5, ymm0, ymm5` | 不用 |
-| 累加到向量 | `vpaddd ymm6, ymm5, ymm6` (int32) | 不用 |
-| int16→int32 | 不用（VPADDD 隐式配对） | `VPMOVSXWD` 符号扩展 |
-| 标量归约 | 不用（延迟归约） | `VEXTRACTI128+VPHADDD` |
+| Byte-pair sums | `vpmaddubsw ymm0,ymm15,ymm2` | `VPMADDUBSW Y2,Y15,Y0` |
+| Operand roles | ymm15(u)×ymm2(s) | Y2(s)×Y15(u) |
+| Combine halves | `vpaddw ymm5,ymm5,ymm0` (int16) | — |
+| Carry handling | `vpsrld+vpaddw` | — |
+| Vector accumulate | `vpaddd ymm6,ymm5,ymm6` | — |
+| int16→int32 | implicit via VPADDD pairing | `VPMOVSXWD` |
+| Reduce to scalar | deferred | `VEXTRACTI128+VPHADDD` |
 
-### s2 计算
+### 3.3 s2 Computation
 
-| 步骤 | rsync ASM | Shuttle Go asm |
+| Step | rsync ASM | Shuttle Go asm |
 |------|-----------|---------------|
-| 加权和 | `vpmaddubsw ymm2, ymm7, ymm2` | `VPMADDUBSW Y2, Y7, Y2` |
-| 操作数语义 | src1=ymm7(unsigned=weights), src2=ymm2(signed=data) | src1=Y2(signed=data), src2=Y7(unsigned=weights) |
-| 合并 | `vpaddw ymm3, ymm2, ymm3` (int16) | 不用（先扩展） |
-| int16→int32 | `vpsrldq ymm2, ymm3, 2; vpaddd ymm3, ymm2, ymm3` | `VPMOVSXWD` |
-| s2 累加 | `vpaddd ymm1, ymm1, ymm3` (向量) | `ADDL R9, R11` (标量) |
-| 64×s1 | `vpslld ymm3, ymm4, 6; vpaddd ymm0, ymm3, ymm1` | `MOVL R10,R9; SHLL $6,R9; ADDL R9,R11` |
+| Weighted sums | `vpmaddubsw ymm2,ymm7,ymm2` | `VPMADDUBSW Y2,Y7,Y2` |
+| Operand roles | ymm7(u=wts)×ymm2(s=data) | Y2(s=data)×Y7(u=wts) |
+| Combine halves | `vpaddw ymm3,ymm2,ymm3` | — (widen first) |
+| int16→int32 | `vpsrldq+vpaddd` pairing | `VPMOVSXWD` |
+| Accumulate s2 | `vpaddd ymm1,ymm1,ymm3` (vector) | `ADDL R9,R11` (scalar) |
+| 64×s1 term | `vpslld+vpaddd` (vector) | `MOVL+SHLL+ADDL` (scalar) |
 
-### 归约（rsync 延迟归约 vs 我们逐轮归约）
+### 3.4 Reduction Comparison
 
-| rsync ASM（延迟，循环后一次） | Shuttle（逐轮，每轮都做） |
+| rsync ASM (deferred, once) | Shuttle (per-iteration) |
 |---|---|
-| `vpsrldq ymm2, ymm6, 4` | `VEXTRACTI128 $1, Y0, X1` |
-| `vpaddd ymm6, ymm2, ymm6` | `VPADDD X1, X0, X0` |
-| `vpsrldq ymm2, ymm6, 8` | `VPHADDD X0, X0, X0` |
-| `vpaddd ymm6, ymm2, ymm6` | `VPHADDD X0, X0, X0` |
-| `vextracti128 xmm2, ymm6, 0x1` | |
-| `vpaddd xmm6, xmm2, xmm6` | |
-| `vmovd [rcx], xmm6` | `VMOVD X0, R12` |
-| 0 次 VPHADDD | 4 次 VPHADDD（s1×2 + s2×2） |
+| `vpsrldq ymm2,ymm6,4` | `VEXTRACTI128 $1,Y0,X1` |
+| `vpaddd ymm6,ymm2,ymm6` | `VPADDD X1,X0,X0` |
+| `vpsrldq ymm2,ymm6,8` | `VPHADDD X0,X0,X0` |
+| `vpaddd ymm6,ymm2,ymm6` | `VPHADDD X0,X0,X0` |
+| `vextracti128+vpaddd+vmovd` | `VMOVD X0,R12` |
+| 0× VPHADDD | 4× VPHADDD/iter |
 
 ---
 
-## 4. 为什么不用延迟归约
+## 4. Why Not Deferred Reduction
 
-rsync ASM 的延迟归约产生"编码"的 s1/s2：只有经过 `(s1&0xFFFF)+(s2<<16)` 公式才能还原正确校验和。
+Rsync ASM's deferred reduction produces "encoded" s1/s2 values — they only become correct after applying `(s1 & 0xFFFF) + (s2 << 16)`.
 
-Shuttle 做**滑动窗口**（`Roll()` 方法）需要每轮滚入/滚出字节立即更新 s1/s2——编码值无法做逐字节的加减运算。必须先归约到真正标量。
+Shuttle performs a **sliding window** (`Roll()` method) that adds/subtracts individual bytes from s1/s2 in real time. Encoded values cannot be incremented byte-by-byte. They must be fully reduced to actual scalars.
 
----
-
-## 5. 关键发现
-
-1. **Go asm VPMADDUBSW 操作数反转**（src1=signed, src2=unsigned，与 Intel 相反）
-2. **Go asm VPUNPCKLWD 操作数也反转**（src2→even, src1→odd）
-3. **VPUNPCK 零扩展 vs VPMOVSXWD 符号扩展**：signed 数据必须用符号扩展
-4. **XMM/YMM 寄存器别名**：`X0` 是 `Y0` 的低 128 位，不是独立寄存器
-5. **rsync 的 signed char**：校验和基于有符号字节，不是无符号
+We confirmed on real hardware that rsync's ASM outputs encoded values (`s1=4194432` for 128 bytes of all-ones, not `s1=128`), and these values cannot be used directly for rolling.
 
 ---
 
-## 6. 寄存器映射
+## 5. Key Discoveries
 
-| rsync ASM | Shuttle Go asm | 用途 |
-|-----------|---------------|------|
-| rdi | DI | 数据指针 |
-| esi | SI | 迭代计数 |
-| rcx | CX | *ps1 指针 |
-| r8 | R8 | *ps2 指针 |
-| eax | R11 | s2 标量 |
-| ymm2, ymm3 | Y2, Y8 | 当前 64B 数据 |
-| ymm7, ymm12 | Y7, Y6 | 权重表 [64..1] |
-| ymm15 | Y15 | 全 1 表 |
-| ymm6 | (不用) | s1 向量累加器 |
-| ymm4, ymm1 | (不用) | s2 向量累加器 |
-| ymm8, ymm9 | Y9, Y10 | 预取缓冲 |
-| — | R10 | s1 标量（rsync 放向量） |
-| — | R9 | 临时（乘 64 / 加权和） |
+1. **Go asm VPMADDUBSW operand swap** — src1=signed, src2=unsigned (opposite of Intel manual)
+2. **Go asm VPUNPCKLWD also swapped** — src2→even positions, src1→odd
+3. **VPUNPCK zero-extend vs VPMOVSXWD sign-extend** — signed data requires sign-extension
+4. **XMM/YMM register aliasing** — `X0` is the low 128 bits of `Y0`, not an independent register
+5. **rsync uses signed char** — the checksum is fundamentally based on signed bytes
+
+---
+
+## 6. Register Map
+
+| rsync ASM | Shuttle Go asm | Purpose |
+|-----------|---------------|---------|
+| rdi | DI | data pointer |
+| esi | SI | iteration count |
+| rcx | CX | `*ps1` pointer |
+| r8 | R8 | `*ps2` pointer |
+| eax | R11 | s2 scalar |
+| ymm2, ymm3 | Y2, Y8 | current 64B of data |
+| ymm7, ymm12 | Y7, Y6 | weight table [64..1] |
+| ymm15 | Y15 | all-ones table |
+| ymm6 | *(unused)* | s1 vector accumulator |
+| ymm4, ymm1 | *(unused)* | s2 vector accumulators |
+| ymm8, ymm9 | Y9, Y10 | prefetch buffers |
+| — | R10 | s1 scalar (rsync uses vector) |
+| — | R9 | temp (×64 / weighted_sum) |
 | — | R12 | delta_s1 |
