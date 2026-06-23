@@ -49,9 +49,11 @@ loop:
 	VPADDD  Y6, Y3, Y6            // Y6 = 8 int32 for second 32B
 
 	// Combine → scalar delta_s1
-	VPADDD  Y6, Y0, Y0
-	VEXTRACTI128 $1, Y0, X1
-	VPADDD  X1, X0, X0            // 4 int32
+	// X0/X1 are the low 128 bits of Y0/Y1 — writing Y0 updates X0 automatically.
+	// Extract high lane ($1) to X1, add to low lane (X0 already holds Y0's low 4).
+	VPADDD  Y6, Y0, Y0            // Y0=8 int32; X0=low 4, implicitly valid
+	VEXTRACTI128 $1, Y0, X1       // X1=high 4
+	VPADDD  X1, X0, X0            // X0=low4+high4 = 4 int32
 	VPHADDD X0, X0, X0            // 2
 	VPHADDD X0, X0, X0            // 1
 	VMOVD   X0, R12               // R12 = delta_s1
@@ -94,10 +96,10 @@ skip_prefetch:
 	VPMOVSXWD X6, Y6
 	VPADDD  Y6, Y3, Y6           // Y6 = 8 int32 for second 32B
 
-	// Combine → scalar weighted_sum
-	VPADDD  Y6, Y2, Y2
-	VEXTRACTI128 $1, Y2, X1
-	VPADDD  X1, X2, X2           // 4 int32
+	// Combine → scalar weighted_sum  (same XMM/YMM aliasing trick)
+	VPADDD  Y6, Y2, Y2            // Y2=8 int32; X2=low 4
+	VEXTRACTI128 $1, Y2, X1       // X1=high 4
+	VPADDD  X1, X2, X2            // X2=low4+high4 = 4 int32
 	VPHADDD X2, X2, X2           // 2
 	VPHADDD X2, X2, X2           // 1
 	VMOVD   X2, R9               // weighted_sum
