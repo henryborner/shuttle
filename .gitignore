@@ -6,6 +6,9 @@ shuttle_linux
 # Config (may contain keys)
 syncd.yaml
 
+# Test data
+testdata/
+
 # IDE
 .idea/
 
