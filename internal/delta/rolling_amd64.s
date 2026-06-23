@@ -20,11 +20,16 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	VMOVDQU (AX), Y7              // weights [64..33]
 	VMOVDQU 32(AX), Y13           // weights [32..1]
 
+	// ── Load initial values ──
+	MOVL    (CX), R10             // read initial s1
+	VMOVD   R10, X0
+	VPBROADCASTD X0, Y14          // Y14 = init_s1 (broadcast to 8 lanes)
+	MOVL    (R8), DX              // DX = init_s2, saved for exit
+
 	// ── Zero init ──
 	VPXOR   Y5, Y5, Y5            // zero for VPUNPCK
 	VPXOR   Y12, Y12, Y12         // Σ weighted byte sums (deferred)
 	VPXOR   Y4, Y4, Y4            // Y4 = Σ s1_before_k  (deferred s2)
-	VPXOR   Y14, Y14, Y14         // Y14 = running s1 (vector)
 
 	// Preload first 64 bytes
 	VMOVDQU 0(DI), Y2             // first 32B
@@ -126,6 +131,7 @@ skip_prefetch:
 	VPADDD  X1, X12, X12
 	VMOVD   X12, R11
 	ADDL    R9, R11                // s2 = 64·Σs1_before + Σweighted
+	ADDL    DX, R11                // s2 += init_s2
 
 	MOVL    R10, (CX)              // store s1
 	MOVL    R11, (R8)              // store s2
