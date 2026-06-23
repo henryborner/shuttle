@@ -4,9 +4,9 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.2.8-green)]()
+[![Version](https://img.shields.io/badge/version-0.2.0-green)]()
 
-> 配置文件驱动 · 增量传输 · AVX2 校验和引擎 · TUI 面板 · SFTP · 保护列表 · 中英双语
+> 配置文件驱动 · 增量传输 · rsync AVX2 校验和 · TUI 面板 · SFTP · 保护列表 · 中英双语
 
 **Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 rsync 算法，自研 SafeRoll AVX2 SIMD 校验和引擎，通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
 
@@ -18,7 +18,7 @@ shuttle tui               # 交互式终端面板
 ## ✨ 特性
 
 - **📋 配置文件驱动** — `syncd.yaml` 定义多组映射，一键同步
-- **� AVX2 SIMD 引擎** — 自研 SafeRoll 校验和算法，int32 宽累加无饱和，~12x 加速
+- **⚡ AVX2 SIMD 引擎** — rsync 算法 VPMADDUBSW 指令，64B/轮，signed byte 语义，~12x 加速
 - **🔄 增量传输** — rsync 风格 Adler-32 滚动校验和 + 多级哈希块匹配，省 99%+ 带宽
 - **🛡 服务器保护列表** — 按服务器配置保护模式，远端文件永不覆盖/删除
 - **🖥 TUI 界面** — 仪表盘、映射管理、服务器管理、文件浏览器、设置

@@ -12,14 +12,13 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		return 0, 0
 	}
 
-	// AVX2 assembly (32B/iter, full s1+s2, no saturation) — CPU feature check
+	// AVX2 assembly (64B/iter, VPMADDUBSW+VPMOVSXWD, signed raw checksum)
 	if cpu.X86.HasAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
-		p := n - n%32
+		p := n - n%64
 		s1 += uint32(p) * CHAR_OFFSET
 		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
-		rem := n % 32
-		for i := n - rem; i < n; i++ {
-			s1 += uint32(data[i]) + CHAR_OFFSET
+		for i := p; i < n; i++ {
+			s1 += uint32(int8(data[i])) + CHAR_OFFSET
 			s2 += s1
 		}
 		return s1, s2
@@ -34,7 +33,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		var sw0 uint32
 		for g := 0; g < 8; g++ {
 			j := g * 4
-			b0, b1, b2, b3 := uint32(data[i+j]), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
+			b0, b1, b2, b3 := uint32(int8(data[i+j])), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
 			g0[g] = b0 + b1 + b2 + b3
 			sw0 += 4*b0 + 3*b1 + 2*b2 + b3
 		}
@@ -46,7 +45,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		var sw1 uint32
 		for g := 0; g < 8; g++ {
 			j := 32 + g*4
-			b0, b1, b2, b3 := uint32(data[i+j]), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
+			b0, b1, b2, b3 := uint32(int8(data[i+j])), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
 			g1[g] = b0 + b1 + b2 + b3
 			sw1 += 4*b0 + 3*b1 + 2*b2 + b3
 		}
@@ -58,7 +57,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		var sw2 uint32
 		for g := 0; g < 8; g++ {
 			j := 64 + g*4
-			b0, b1, b2, b3 := uint32(data[i+j]), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
+			b0, b1, b2, b3 := uint32(int8(data[i+j])), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
 			g2[g] = b0 + b1 + b2 + b3
 			sw2 += 4*b0 + 3*b1 + 2*b2 + b3
 		}
@@ -70,7 +69,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		var sw3 uint32
 		for g := 0; g < 8; g++ {
 			j := 96 + g*4
-			b0, b1, b2, b3 := uint32(data[i+j]), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
+			b0, b1, b2, b3 := uint32(int8(data[i+j])), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
 			g3[g] = b0 + b1 + b2 + b3
 			sw3 += 4*b0 + 3*b1 + 2*b2 + b3
 		}
@@ -86,7 +85,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		var sw uint32
 		for g := 0; g < 8; g++ {
 			j := g * 4
-			b0, b1, b2, b3 := uint32(data[i+j]), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
+			b0, b1, b2, b3 := uint32(int8(data[i+j])), uint32(data[i+j+1]), uint32(data[i+j+2]), uint32(data[i+j+3])
 			gs[g] = b0 + b1 + b2 + b3
 			sw += 4*b0 + 3*b1 + 2*b2 + b3
 		}
@@ -95,7 +94,7 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		i += 32
 	}
 	for ; i < n; i++ {
-		s1 += uint32(data[i]) + CHAR_OFFSET
+		s1 += uint32(int8(data[i])) + CHAR_OFFSET
 		s2 += s1
 	}
 	return s1, s2

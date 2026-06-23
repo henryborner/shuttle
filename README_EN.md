@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.2.8-green)]()
+[![Version](https://img.shields.io/badge/version-0.2.0-green)]()
 
 > Config-driven · Delta transfer · AVX2 engine · TUI · SFTP · Protect list · Bilingual
 
@@ -18,7 +18,7 @@ shuttle tui               # interactive terminal UI
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **� AVX2 SIMD Engine** — Custom SafeRoll checksum, int32-wide accumulation, ~12x speedup
+- **⚡ AVX2 SIMD Engine** — rsync algorithm VPMADDUBSW, 64B/iter, signed byte semantics, ~12x speedup
 - **🔄 Delta transfer** — Adler-32 rolling checksum + multi-level hash match, 99%+ bandwidth savings
 - **🛡 Per-server protect** — Protect patterns per server; remote files never overwritten or deleted
 - **🖥 TUI** — Dashboard, mappings, servers, explorer, settings, protect editor
