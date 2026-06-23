@@ -1,5 +1,6 @@
 // AVX2 checksum: 64B/iter, VPMADDUBSW unsigned + VPUNPCK,
-// deferred s1 reduction (rsync-style). CHAR_OFFSET post-correction in Go.
+// deferred s1 reduction, next-block load at loop bottom.
+// CHAR_OFFSET post-correction in Go.
 
 #include "textflag.h"
 
@@ -26,22 +27,21 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	VPBROADCASTD X0, Y14          // Y14 = init_s1 (broadcast to 8 lanes)
 	MOVL    (R8), DX              // DX = init_s2, saved for exit
 
-	// ── Zero init ──
+	// ── Zero accumulators ──
 	VPXOR   Y5, Y5, Y5            // zero for VPUNPCK
 	VPXOR   Y12, Y12, Y12         // Σ weighted byte sums (deferred)
 	VPXOR   Y4, Y4, Y4            // Y4 = Σ s1_before_k  (deferred s2)
 
-	// Preload first 64 bytes
-	VMOVDQU 0(DI), Y2             // first 32B
-	VMOVDQU 32(DI), Y8            // second 32B
-
+	// Preload first 64B block
+	VMOVDQU 0(DI), Y2
+	VMOVDQU 32(DI), Y8
 	ANDQ    $~63, SI              // len & ~63
 	SHRQ    $6, SI                // iterations = len/64
 	ADDQ    $64, DI
 
 loop:
 	// ═══════════════════════════════════════
-	// s1: VPMADDUBSW → VPUNPCK widen → 8×int32 delta per 64B block
+	// s1: VPMADDUBSW → VPUNPCK widen → 8×int32 delta
 	// ═══════════════════════════════════════
 
 	VPMADDUBSW Y15, Y2, Y0        // first 32B → 16 int16
@@ -54,25 +54,15 @@ loop:
 	VPUNPCKHWD Y5, Y6, Y6
 	VPADDD  Y6, Y3, Y6            // Y6 = 8×int32 for second 32B
 
-	VPADDD  Y6, Y0, Y0            // Y0 = 8×int32 delta_s1 for this 64B
-
-	// ── Prefetch next 64B ──
-	CMPQ    SI, $1
-	JE      skip_prefetch
-	VMOVDQU 0(DI), Y9
-	VMOVDQU 32(DI), Y10
-	ADDQ    $64, DI
-skip_prefetch:
+	VPADDD  Y6, Y0, Y0            // Y0 = 8×int32 delta_s1
 
 	// ═══════════════════════════════════════
 	// s2: accumulate s1_before (deferred)
-	//     Y4 += Y14    where Y14 = s1 at start of this block
-	//     s2_correction = 64 × Σ s1_before_k
 	// ═══════════════════════════════════════
 	VPADDD  Y4, Y14, Y4           // Y4 = Σ running_s1_at_block_start
 
 	// ═══════════════════════════════════════
-	// s2: weighted byte sums [64..1] → accumulate in Y12
+	// s2: weighted byte sums → accumulate in Y12
 	// ═══════════════════════════════════════
 
 	VPMADDUBSW Y7, Y2, Y2         // first 32B × weights [64..33]
@@ -93,13 +83,15 @@ skip_prefetch:
 	// ═══════════════════════════════════════
 	VPADDD  Y14, Y0, Y14          // running s1 += delta
 
-	// Move prefetched → working
-	VMOVDQA Y9, Y2
-	VMOVDQA Y10, Y8
-
+	// ── Load next block (or exit) ──
 	SUBQ    $1, SI
-	JNZ     loop
+	JZ      done
+	VMOVDQU 0(DI), Y2             // next first 32B → Y2
+	VMOVDQU 32(DI), Y8            // next second 32B → Y8
+	ADDQ    $64, DI
+	JMP     loop
 
+done:
 	// ═══════════════════════════════════════
 	// Exit: reduce Y14 → s1,  Y4|Y12 → s2
 	// ═══════════════════════════════════════
