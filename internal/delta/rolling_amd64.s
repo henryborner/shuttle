@@ -21,22 +21,22 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	VMOVDQU (AX), Y7              // weights [64..33]
 	VMOVDQU 32(AX), Y13           // weights [32..1]
 
-	// ── Load initial values ──
-	MOVL    (CX), R10             // read initial s1
-	VMOVD   R10, X0
-	VPBROADCASTD X0, Y14          // Y14 = init_s1 (broadcast to 8 lanes)
-	MOVL    (R8), DX              // DX = init_s2, saved for exit
+	// ── Save initial values (applied as scalars at exit) ──
+	MOVL    (CX), R13             // R13 = init_s1
+	MOVL    (R8), DX              // DX  = init_s2
 
 	// ── Zero accumulators ──
 	VPXOR   Y5, Y5, Y5            // zero for VPUNPCK
 	VPXOR   Y12, Y12, Y12         // Σ weighted byte sums (deferred)
 	VPXOR   Y4, Y4, Y4            // Y4 = Σ s1_before_k  (deferred s2)
+	VPXOR   Y14, Y14, Y14         // Y14 = running byte-sum (vector, no init_s1)
 
 	// Preload first 64B block
 	VMOVDQU 0(DI), Y2
 	VMOVDQU 32(DI), Y8
 	ANDQ    $~63, SI              // len & ~63
 	SHRQ    $6, SI                // iterations = len/64
+	MOVQ    SI, R12               // R12 = N (for exit correction)
 	ADDQ    $64, DI
 
 loop:
@@ -104,6 +104,7 @@ done:
 	VPSRLDQ $4, X14, X1
 	VPADDD  X1, X14, X14
 	VMOVD   X14, R10
+	ADDL    R13, R10               // s1 = byte_sum + init_s1
 
 	// s2 = 64 × reduce(Y4) + reduce(Y12)
 	VEXTRACTI128 $1, Y4, X1
@@ -114,6 +115,12 @@ done:
 	VPADDD  X1, X4, X4
 	VMOVD   X4, R9
 	SHLL    $6, R9                 // R9 = 64 × Σ s1_before
+
+	// s2 correction for init_s1: 64 × N × init_s1
+	MOVL    R12, R11               // R11 = N
+	IMULL   R13, R11               // R11 = N × init_s1
+	SHLL    $6, R11                // R11 = 64 × N × init_s1
+	ADDL    R11, R9                // R9 = 64 × (Σs1_before + N·init_s1)
 
 	VEXTRACTI128 $1, Y12, X1
 	VPADDD  X1, X12, X12
