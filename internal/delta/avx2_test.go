@@ -33,7 +33,7 @@ func TestAVX2Parity(t *testing.T) {
 			}
 			p := len(tt.data) - len(tt.data)%64
 			for i := p; i < len(tt.data); i++ {
-				avxS1 += uint32(int8(tt.data[i]))
+				avxS1 += uint32(tt.data[i])
 				avxS2 += avxS1
 			}
 			if avxS1 != wantS1 || avxS2 != wantS2 {
@@ -69,7 +69,7 @@ func randBytes(n int) []byte {
 // referenceChecksum1Raw is byte-by-byte without CHAR_OFFSET.
 func referenceChecksum1Raw(data []byte) (s1, s2 uint32) {
 	for _, b := range data {
-		s1 += uint32(int8(b))
+		s1 += uint32(b)
 		s2 += s1
 	}
 	return

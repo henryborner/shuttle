@@ -1,5 +1,5 @@
 // AVX2 checksum: 64B/iter, VPMADDUBSW for s1+s2,
-// VPMOVSXWD sign-extend (compatible with signed bytes + rolling).
+// unsigned bytes + VPUNPCK zero-extend (no VEXTRACTI128 per lane).
 // CHAR_OFFSET post-correction in Go.
 
 #include "textflag.h"
@@ -14,9 +14,13 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 	MOVQ    s1+24(FP), CX         // *ps1
 	MOVQ    s2+32(FP), R8         // *ps2
 
-	// ── All-1s table for s1 ──
+	// ── Tables + zero reg ──
 	LEAQ    ones<>+0(SB), AX
-	VMOVDQU (AX), Y15
+	VMOVDQU (AX), Y15             // all-1s (signed, for s1)
+	LEAQ    mul_T2<>+0(SB), AX
+	VMOVDQU (AX), Y7              // weights [64..33] (read-only, loaded once)
+	VPXOR   Y5, Y5, Y5            // zero reg for VPUNPCK widening
+	VPXOR   X12, X12, X12         // s2 weighted accumulator = 0
 
 	MOVL    (CX), R10             // s1 scalar
 	MOVL    (R8), R11             // s2 scalar
@@ -31,34 +35,32 @@ TEXT ·checksum1AVX2(SB), NOSPLIT, $0-41
 
 loop:
 	// ═══════════════════════════════════════
-	// s1: VPMADDUBSW → VPMOVSXWD (sign-extend) → VPADDD
+	// s1: VPMADDUBSW (ones signed × data unsigned) → VPUNPCK widen → VPADDD
 	// ═══════════════════════════════════════
 
-	// First 32B → 16 int16, sign-extend to 8 int32 per lane
-	VPMADDUBSW Y2, Y15, Y0        // data(signed) × all-1s(unsigned) → 16 int16
-	VPMOVSXWD X0, Y3              // sign-extend low 8 int16 → 8 int32 in Y3
-	VEXTRACTI128 $1, Y0, X0
-	VPMOVSXWD X0, Y0              // sign-extend high 8 int16 → 8 int32 in Y0
+	// First 32B
+	VPMADDUBSW Y15, Y2, Y0        // ones(signed) × data(unsigned) → 16 int16
+	VPUNPCKLWD Y5, Y0, Y3         // zero-extend low 8 int16 → 8 int32 (both lanes)
+	VPUNPCKHWD Y5, Y0, Y0         // zero-extend high 8 int16 → 8 int32
 	VPADDD  Y0, Y3, Y0            // Y0 = 8 int32 for first 32B
 
 	// Second 32B
-	VPMADDUBSW Y8, Y15, Y6        // data(signed) × all-1s(unsigned) → 16 int16
-	VPMOVSXWD X6, Y3
-	VEXTRACTI128 $1, Y6, X6
-	VPMOVSXWD X6, Y6
+	VPMADDUBSW Y15, Y8, Y6        // ones(signed) × data(unsigned) → 16 int16
+	VPUNPCKLWD Y5, Y6, Y3
+	VPUNPCKHWD Y5, Y6, Y6
 	VPADDD  Y6, Y3, Y6            // Y6 = 8 int32 for second 32B
 
-	// Combine → scalar delta_s1
-	// X0/X1 are the low 128 bits of Y0/Y1 — writing Y0 updates X0 automatically.
-	// Extract high lane ($1) to X1, add to low lane (X0 already holds Y0's low 4).
-	VPADDD  Y6, Y0, Y0            // Y0=8 int32; X0=low 4, implicitly valid
+	// Combine → scalar delta_s1 (VPSRLDQ+VPADDD, faster than VPHADDD)
+	VPADDD  Y6, Y0, Y0            // Y0=8 int32; X0=low 4
 	VEXTRACTI128 $1, Y0, X1       // X1=high 4
-	VPADDD  X1, X0, X0            // X0=low4+high4 = 4 int32
-	VPHADDD X0, X0, X0            // 2
-	VPHADDD X0, X0, X0            // 1
+	VPADDD  X1, X0, X0            // X0=4 int32
+	VPSRLDQ $8, X0, X1
+	VPADDD  X1, X0, X0            // 2 int32
+	VPSRLDQ $4, X0, X1
+	VPADDD  X1, X0, X0            // 1 int32
 	VMOVD   X0, R12               // R12 = delta_s1
 
-	// ── Preload next 64B (skip on last iteration) ──
+	// ── Preload next 64B ──
 	CMPQ    SI, $1
 	JE      skip_prefetch
 	VMOVDQU 0(DI), Y9
@@ -70,52 +72,53 @@ skip_prefetch:
 	// s2: s2 += 64 * s1_before
 	// ═══════════════════════════════════════
 	MOVL    R10, R9
-	SHLL    $6, R9               // R9 = s1_before * 64
-	ADDL    R9, R11              // s2 += 64 * s1_before
+	SHLL    $6, R9
+	ADDL    R9, R11
 
 	// ═══════════════════════════════════════
-	// s2: VPMADDUBSW × byte weights [64..1] → VPMOVSXWD → VPADDD
+	// s2: VPMADDUBSW × byte weights → VPUNPCK widen → accumulate in Y12
 	// ═══════════════════════════════════════
 
-	// Load byte weights
-	LEAQ    mul_T2<>+0(SB), AX
-	VMOVDQU (AX), Y7             // weights [64..33]
-	VMOVDQU 32(AX), Y6           // weights [32..1]
+	LEAQ    mul_T2<>+32(SB), AX
+	VMOVDQU (AX), Y6             // weights [32..1] (overwritten each iter)
 
-	// First 32B × [64..33]
-	VPMADDUBSW Y2, Y7, Y2        // data(signed) × weights(unsigned) → 16 int16
-	VPMOVSXWD X2, Y3
-	VEXTRACTI128 $1, Y2, X2
-	VPMOVSXWD X2, Y2
+	// First 32B × [64..33] (Y7 loaded once at init)
+	VPMADDUBSW Y7, Y2, Y2        // weights(signed) × data(unsigned) → 16 int16
+	VPUNPCKLWD Y5, Y2, Y3
+	VPUNPCKHWD Y5, Y2, Y2
 	VPADDD  Y2, Y3, Y2           // Y2 = 8 int32 for first 32B
 
 	// Second 32B × [32..1]
-	VPMADDUBSW Y8, Y6, Y6        // data(signed) × weights(unsigned) → 16 int16
-	VPMOVSXWD X6, Y3
-	VEXTRACTI128 $1, Y6, X6
-	VPMOVSXWD X6, Y6
+	VPMADDUBSW Y6, Y8, Y6        // weights(signed) × data(unsigned) → 16 int16
+	VPUNPCKLWD Y5, Y6, Y3
+	VPUNPCKHWD Y5, Y6, Y6
 	VPADDD  Y6, Y3, Y6           // Y6 = 8 int32 for second 32B
 
-	// Combine → scalar weighted_sum  (same XMM/YMM aliasing trick)
-	VPADDD  Y6, Y2, Y2            // Y2=8 int32; X2=low 4
-	VEXTRACTI128 $1, Y2, X1       // X1=high 4
-	VPADDD  X1, X2, X2            // X2=low4+high4 = 4 int32
-	VPHADDD X2, X2, X2           // 2
-	VPHADDD X2, X2, X2           // 1
-	VMOVD   X2, R9               // weighted_sum
-	ADDL    R9, R11              // s2 += weighted_sum
+	// Combine and accumulate into Y12 (deferred reduction)
+	VPADDD  Y6, Y2, Y2
+	VPADDD  Y12, Y2, Y12         // Y12 += combined weighted sums
 
 	// ═══════════════════════════════════════
 	// s1 += delta_s1
 	// ═══════════════════════════════════════
 	ADDL    R12, R10
 
-	// Move preloaded to working regs
+	// Move preloaded to working
 	VMOVDQA Y9, Y2
 	VMOVDQA Y10, Y8
 
 	SUBQ    $1, SI
 	JNZ     loop
+
+	// ── Deferred reduction: Y12 → scalar → R11 ──
+	VEXTRACTI128 $1, Y12, X1
+	VPADDD  X1, X12, X12         // 4 int32
+	VPSRLDQ $8, X12, X1
+	VPADDD  X1, X12, X12         // 2
+	VPSRLDQ $4, X12, X1
+	VPADDD  X1, X12, X12         // 1
+	VMOVD   X12, R9
+	ADDL    R9, R11              // s2 += accumulated weighted sum
 
 	MOVL    R10, (CX)             // store s1
 	MOVL    R11, (R8)             // store s2
