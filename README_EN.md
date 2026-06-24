@@ -90,6 +90,16 @@ tasks:
 | `shuttle init` | Generate config file |
 | `shuttle version` | Version + Go/OS/available algos |
 
+### push Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview only, no changes |
+| `-v, --verbose` | Verbose output (bytes sent + error details) |
+| `-w, --workers N` | Parallel workers (default 4, 0=serial) |
+| `--algo name` | Override checksum algorithm (md5 / xxh64 / sha256) |
+| `-c, --config path` | Config file path (default syncd.yaml) |
+
 ## 🎮 Shortcuts
 
 | Context | Key | Action |

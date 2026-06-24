@@ -90,6 +90,16 @@ tasks:
 | `shuttle init` | 生成配置文件 |
 | `shuttle version` | 版本 + Go/OS/可用算法 |
 
+### push 标志
+
+| 标志 | 说明 |
+|------|------|
+| `--dry-run` | 模拟运行，不实际传输或修改文件 |
+| `-v, --verbose` | 详细输出（显示发送字节数 + 错误详情） |
+| `-w, --workers N` | 并行 worker 数（默认 4，0=串行） |
+| `--algo name` | 覆盖校验和算法（md5 / xxh64 / sha256） |
+| `-c, --config path` | 指定配置文件（默认 syncd.yaml） |
+
 ## 🎮 快捷键
 
 | 范围 | 按键 | 功能 |
