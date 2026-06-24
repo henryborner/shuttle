@@ -1,9 +1,9 @@
-
 package delta
 
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -11,7 +11,6 @@ import (
 func TestRollingSum(t *testing.T) {
 	data := []byte("Hello, World! This is a test of the rolling checksum.")
 	blockSize := int32(16)
-
 
 	rs1 := NewRollingSum(data[:blockSize])
 	sumFull := rs1.Value()
@@ -46,7 +45,6 @@ func TestGenerateSignature(t *testing.T) {
 		t.Errorf("块数量错 期望 %d, 得到 %d", expectedBlocks, len(sig.BlockSums))
 	}
 
-
 	for i, bs := range sig.BlockSums {
 		start := i * int(blockSize)
 		end := start + int(blockSize)
@@ -66,7 +64,6 @@ func TestDeltaRoundTrip(t *testing.T) {
 	basisFile := make([]byte, 100*1024) // 100KB
 	rand.Read(basisFile)
 
-
 	newFile := make([]byte, 0, 100*1024+1024)
 	newFile = append(newFile, basisFile[:50*1024]...)               // 前半部分相同
 	newFile = append(newFile, []byte("INSERTED DATA AT MIDDLE")...) // 插入新数
@@ -74,14 +71,11 @@ func TestDeltaRoundTrip(t *testing.T) {
 
 	blockSize := CalculateBlockSize(int64(len(basisFile)))
 
-
 	sig := GenerateSignature(basisFile, blockSize, "md5")
-
 
 	engine := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
 	instructions := engine.Search(newFile)
-
 
 	recon := NewReconstructor(basisFile, blockSize, "md5")
 	result, err := recon.Reconstruct(instructions)
@@ -94,7 +88,6 @@ func TestDeltaRoundTrip(t *testing.T) {
 		t.Errorf("重建结果与原始文件不一")
 		t.Logf("原始大小: %d, 重建大小: %d", len(newFile), len(result))
 	}
-
 
 	literalBytes := engine.LiteralBytes
 	totalBytes := int64(len(newFile))
@@ -169,6 +162,19 @@ func BenchmarkSearch(b *testing.B) {
 	}
 }
 
+func BenchmarkChecksum1(b *testing.B) {
+	sizes := []int{1024, 8192, 65536, 1048576}
+	for _, size := range sizes {
+		data := make([]byte, size)
+		rand.Read(data)
+		b.Run(fmt.Sprintf("%dKB", size/1024), func(b *testing.B) {
+			b.SetBytes(int64(size))
+			for i := 0; i < b.N; i++ {
+				Checksum1(data)
+			}
+		})
+	}
+}
 
 func TestExampleUsage(t *testing.T) {
 
@@ -183,7 +189,6 @@ func TestExampleUsage(t *testing.T) {
 
 	// 1. 生成旧文件的签名
 	sig := GenerateSignature(oldFile, blockSize, "md5")
-
 
 	engine := NewMatchEngine(blockSize, "md5")
 	engine.LoadSignature(sig)
@@ -214,7 +219,6 @@ func TestSpeedComparison(t *testing.T) {
 	sigTime := time.Since(start)
 	t.Logf("签名生成: %v (%.1f MB/s)", sigTime,
 		float64(fileSize)/1024/1024/sigTime.Seconds())
-
 
 	modified := make([]byte, fileSize)
 	copy(modified, data)

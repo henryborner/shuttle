@@ -12,9 +12,21 @@ func checksum1(data []byte) (s1, s2 uint32) {
 		return 0, 0
 	}
 
-	// AVX2 assembly (64B/iter, VPMADDUBSW+VPMOVSXWD, signed raw checksum)
+	// AVX2 assembly (64B/iter)
 	if cpu.X86.HasAVX2 && n >= 64 && checksum1AVX2(data, &s1, &s2) {
 		p := n - n%64
+		s1 += uint32(p) * CHAR_OFFSET
+		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
+		for i := p; i < n; i++ {
+			s1 += uint32(data[i]) + CHAR_OFFSET
+			s2 += s1
+		}
+		return s1, s2
+	}
+
+	// SSE2 assembly (32B/iter, SSSE3 actually — all amd64 CPUs)
+	if n >= 32 && checksum1SSE2(data, &s1, &s2) {
+		p := n - n%32
 		s1 += uint32(p) * CHAR_OFFSET
 		s2 += uint32(p) * uint32(p+1) / 2 * CHAR_OFFSET
 		for i := p; i < n; i++ {
