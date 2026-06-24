@@ -362,7 +362,12 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	insts := eng.Search(lr.data)
 	dt := time.Since(t0)
 	if dt > 5*time.Second {
-		fmt.Fprintf(os.Stderr, "[perf] Search 1GB took %v\n", dt)
+		f, _ := os.OpenFile("shuttle_perf.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if f != nil {
+			fmt.Fprintf(f, "[perf] Search %dMB took %v (block=%d, matches=%d, hits=%d, false=%d, literal=%d)\n",
+				len(lr.data)/(1024*1024), dt, sig.BlockSize, eng.Matches, eng.HashHits, eng.FalseAlarms, eng.LiteralBytes)
+			f.Close()
+		}
 	}
 
 	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）
