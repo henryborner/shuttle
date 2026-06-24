@@ -215,3 +215,27 @@ Unused YMM registers: Y1, Y9, Y10, Y11 (available for future optimizations).
 | ones-64/128/256 | all 0xFF | maximum unsigned values (signed-critical) |
 | inc-64/128/200 | 0,1,2,…,n-1 | incremental, crosses 127 boundary |
 | rand-128/700/2048 | crypto/rand | arbitrary binary data |
+
+---
+
+## 9. Performance
+
+Measured on Intel Xeon Platinum (Skylake-SP, 2.5 GHz cloud VM, GCC 13.3 / Go 1.23):
+
+| Block size | Throughput |
+|------------|------------|
+| 1 KB | 18,224 MB/s |
+| 8 KB | 25,334 MB/s |
+| 64 KB | 25,546 MB/s |
+| 1 MB | 25,632 MB/s |
+
+On AMD Ryzen 9 8940HX (Zen 4, 5.3 GHz):
+
+| Block size | Throughput |
+|------------|------------|
+| 1 KB | 29,707 MB/s |
+| 8 KB | 45,045 MB/s |
+| 64 KB | 51,431 MB/s |
+| 1 MB | 51,839 MB/s |
+
+Throughput scales with block size as the loop overhead amortizes. Large blocks approach the port 5 bottleneck limit of ~56 GB/s (Zen 4) / ~28 GB/s (Skylake-SP), bounded by the 8 VPUNPCK instructions per iteration that all contend for a single execution port.
