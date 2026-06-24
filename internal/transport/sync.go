@@ -366,6 +366,21 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		if f != nil {
 			fmt.Fprintf(f, "[perf] Search %dMB took %v (block=%d, matches=%d, hits=%d, false=%d, literal=%d)\n",
 				len(lr.data)/(1024*1024), dt, sig.BlockSize, eng.Matches, eng.HashHits, eng.FalseAlarms, eng.LiteralBytes)
+			// dump first 5 signature blocks for comparison
+			for i := 0; i < 5 && i < len(sig.BlockSums); i++ {
+				bs := sig.BlockSums[i]
+				fmt.Fprintf(f, "  sig[%d] sum1=%08x offset=%d len=%d\n", i, bs.Sum1, bs.Offset, bs.Length)
+			}
+			// compute checksum of first few blocks from local file
+			rs := delta.NewRollingSum(lr.data[:sig.BlockSize])
+			for i := 0; i < 5 && i < len(sig.BlockSums); i++ {
+				off := int64(i) * int64(sig.BlockSize)
+				if off+int64(sig.BlockSize) > int64(len(lr.data)) {
+					break
+				}
+				rs.Reset(lr.data[off : off+int64(sig.BlockSize)])
+				fmt.Fprintf(f, "  local[%d] sum1=%08x\n", i, rs.Value())
+			}
 			f.Close()
 		}
 	}
