@@ -10,7 +10,7 @@
 | s1 reduction | once at exit (vector) | once at exit (vector) |
 | s2 s1_before term | deferred vector | deferred vector |
 | s2 weighted sum | deferred vector | deferred vector |
-| Loop instructions | 20 (21 with `jnz`) | 23 always-executed |
+| Loop instructions | 21 (with `jnz`) | 23 (with `JZ`) |
 
 > **Both rsync and shuttle use rolling checksums.** rsync does incremental byte-by-byte rolling in `match.c`'s `null_hash` path (pure C: `s1 -= map[0]; s2 -= k*map[0]; s1 += map[k]; s2 += s1`), exactly like shuttle's `Roll()`. The AVX2 functions in both codebases compute *blocks* of 64 bytes, accepting initial s1/s2 values and returning updated ones — rsync's `get_checksum1_avx2_asm` reads `*ps1` and `*ps2` at entry (`vmovd xmm6,[rcx]`; `mov eax,[r8]`).
 >
@@ -161,7 +161,7 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 | current | Bottom-load eliminates Y9/Y10 | **23** | No CMPQ+JE, no VMOVDQA |
 | — | Fix VPBROADCASTD bug | 23 | init_s1 as scalar at exit |
 
-rsync: 20 (21 with `jnz`). Remaining gap comes from widening (8 VPUNPCK instructions). rsync avoids widening by keeping s1 in int16 with an overflow hack (`vpaddw` wrap → `vpsrld` extract → re-add). This preserves correctness only **modulo 2^16**, which is all rsync needs for its encoded output `(s1 & 0xFFFF) | (s2 << 16)`. Shuttle requires full 32-bit s1/s2 for `Roll()`, so the modulo hack isn't viable — values would lose precision across thousands of blocks.
+rsync: 21 (with `jnz`). Remaining gap (23→21) comes from widening (8 VPUNPCK instructions). rsync avoids widening by keeping s1 in int16 with an overflow hack (`vpaddw` wrap → `vpsrld` extract → re-add). This preserves correctness only **modulo 2^16**, which is all rsync needs for its encoded output `(s1 & 0xFFFF) | (s2 << 16)`. Shuttle requires full 32-bit s1/s2 for `Roll()`, so the modulo hack isn't viable — values would lose precision across thousands of blocks.
 
 ---
 
