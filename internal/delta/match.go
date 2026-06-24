@@ -2,7 +2,6 @@ package delta
 
 import (
 	"bytes"
-	"fmt"
 	"hash"
 	"io"
 )
@@ -136,23 +135,6 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 			h = v % me.tableSize
 		}
 		bucket := me.hashTable[h]
-
-		// debug: verify hash table integrity on first block
-		if offset == 0 && len(me.checksums) > 0 {
-			sigSum1 := me.checksums[0].Sum1
-			sigHash := (sigSum1 + sigSum1>>16) & 0xFFFF
-			found := false
-			for _, e := range bucket {
-				if e.sum1 == sigSum1 {
-					found = true
-					break
-				}
-			}
-			if sigHash != h || sigSum1 != v || !found {
-				panic(fmt.Sprintf("HASH BUG offset=0: sig=%08x sigHash=%04x local=%08x localHash=%04x foundInBucket=%v bucketLen=%d",
-					sigSum1, sigHash, v, h, found, len(bucket)))
-			}
-		}
 
 		if len(bucket) > 0 {
 			me.HashHits++
