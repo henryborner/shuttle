@@ -5,16 +5,16 @@
 | | rsync | shuttle |
 |---|---|---|
 | Data type | `schar` (–128..127) | `uint8` (0..255) |
-| CHAR_OFFSET | 0 (hardcoded) | 31 (applied in Go) |
-| s1 return | encoded `uint32`: `(s1&0xFFFF)｜(s2<<16)` | full 32-bit scalar |
-| s2 return | (packed with s1) | full 32-bit scalar |
-| Checksum style | **stateless** — recomputed fresh each window | **stateful** — `Roll(old,new,len)` updates in-place |
+| CHAR_OFFSET | 0 (hardcoded in `rsync.h`) | 31 (applied in Go) |
+| Return format | packed `uint32`: `(s1&0xFFFF)｜(s2<<16)` | two `uint32` scalars (`*s1`, `*s2`) |
 | s1 reduction | once at exit (vector) | once at exit (vector) |
 | s2 s1_before term | deferred vector | deferred vector |
 | s2 weighted sum | deferred vector | deferred vector |
-| Loop instructions | 20 | 23 always-executed |
+| Loop instructions | 20 (21 with `jnz`) | 23 always-executed |
 
-> **Both rsync and shuttle use rolling checksums.** The difference: rsync calls `get_checksum1()` from scratch for each overlapping window position (the caller manages the slide); shuttle's `Roll()` is an incremental byte-by-byte update that needs real 32-bit s1/s2 scalars to compute `s1 -= old; s2 -= len×old; s1 += new; s2 += s1`. This is why shuttle cannot use rsync's 16-bit packed return value — `Roll()` needs the unpacked, real values.
+> **Both rsync and shuttle use rolling checksums.** rsync does incremental byte-by-byte rolling in `match.c`'s `null_hash` path (pure C: `s1 -= map[0]; s2 -= k*map[0]; s1 += map[k]; s2 += s1`), exactly like shuttle's `Roll()`. The AVX2 functions in both codebases compute *blocks* of 64 bytes, accepting initial s1/s2 values and returning updated ones — rsync's `get_checksum1_avx2_asm` reads `*ps1` and `*ps2` at entry (`vmovd xmm6,[rcx]`; `mov eax,[r8]`).
+>
+> The key difference: rsync packs s1/s2 into a single `uint32` as `(s1&0xFFFF)｜(s2<<16)` between the AVX2 call and the incremental roll — the caller must decode with `sum&0xFFFF` / `sum>>16`. Shuttle skips this encode/decode because `Roll()` directly reads the raw `uint32` values. rsync can afford to truncate s1 to 16 bits because CHAR_OFFSET=0 keeps values small and the incremental roll only needs modulo-2^16 correctness for checksum matching.
 
 ---
 
