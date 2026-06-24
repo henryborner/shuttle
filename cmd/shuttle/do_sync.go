@@ -199,8 +199,16 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 				util.FormatBytes(stats.DeltaSaved),
 				float64(stats.DeltaSaved)/float64(stats.TotalBytes)*100)
 		}
+		if verbose {
+			fmt.Printf(" | sent:%s", util.FormatBytes(stats.SentBytes))
+		}
 		if len(stats.Errors) > 0 {
 			fmt.Printf(" | errors:%d", len(stats.Errors))
+			if verbose {
+				for _, e := range stats.Errors {
+					fmt.Printf("\n    - %v", e)
+				}
+			}
 		}
 		fmt.Println()
 	}
