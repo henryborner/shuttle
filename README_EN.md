@@ -6,9 +6,9 @@
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
 [![Version](https://img.shields.io/badge/version-0.1.3.2-green)]()
 
-> Config-driven · Delta transfer · AVX2 engine · TUI · SFTP · Protect list · Bilingual
+> Config-driven · Delta transfer · AVX2/SSE2 engine · TUI · SFTP · Protect list · Bilingual
 
-**Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a ported rsync AVX2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
+**Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a hand-optimized AVX2/SSE2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
 
 ```powershell
 shuttle push web          # sync a task
@@ -18,12 +18,13 @@ shuttle tui               # interactive terminal UI
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **⚡ AVX2 SIMD Engine** — rsync algorithm VPMADDUBSW, 64B/iter, signed byte semantics, ~12x speedup
-- **🔄 Delta transfer** — Adler-32 rolling checksum + multi-level hash match, 99%+ bandwidth savings
+- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 52 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
+- **🔄 Delta transfer** — rsync rolling checksum + hash matching + strong verification, zero transfer for identical files
+- **🔗 Auto Algo Sync** — \--algo flag keeps remote checksum algorithm in sync, prevents mismatch slowdown
 - **🛡 Per-server protect** — Protect patterns per server; remote files never overwritten or deleted
 - **🖥 TUI** — Dashboard, mappings, servers, explorer, settings, protect editor
 - **🌐 SFTP/SSH** — Local → remote with auto key detection
-- **💾 Large file optimized** — mmap memory mapping + xxhash fast checksum, no OOM on 1GB files
+- **💾 Large file optimized** — mmap memory mapping, 1GB files compared in seconds
 - **🌍 Bilingual** — EN/ZH toggle in settings
 - **📦 Single binary** — `shuttle.exe`, zero deps
 
@@ -102,7 +103,7 @@ tasks:
 ```
 cmd/shuttle/          ← Cobra CLI
 internal/
-├── delta/            ← Delta algorithm + AVX2 checksum engine
+├── delta/            ← Delta algorithm + AVX2/SSE2 three-tier checksum engine
 ├── transport/        ← SFTP + SyncEngine + Hook + mmap
 ├── config/           ← YAML parsing
 ├── i18n/             ← EN/ZH translations
