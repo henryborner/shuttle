@@ -46,13 +46,16 @@ go build -o shuttle.exe ./cmd/shuttle/
 ## 🚀 Quick Start
 
 ```powershell
-.\shuttle.exe init              # Generate config template (optional)
-.\shuttle.exe tui               # Launch TUI — add mappings & servers directly
+.\shuttle.exe init              # Generate config template
+.\shuttle.exe tui               # Launch TUI
+.\shuttle.exe list              # List tasks & servers
+.\shuttle.exe config            # Full config summary
+.\shuttle.exe test myserver     # Test SSH connection
 .\shuttle.exe push web          # Sync
-.\shuttle.exe push --dry-run    # Preview
+.\shuttle.exe push -v --dry-run # Verbose preview
 ```
 
-> No manual config needed: run `shuttle tui` and press `A` to add mappings and servers in the UI.
+> No manual config needed: run `shuttle tui` and you're good to go.
 
 ## 📁 Config
 
@@ -80,11 +83,12 @@ tasks:
 | Command | Description |
 |---------|-------------|
 | `shuttle tui` | Launch TUI |
-| `shuttle push [name]` | Sync tasks |
-| `shuttle push --dry-run` | Preview with per-file status + risk warnings |
-| `shuttle config` | Show config file info and location |
+| `shuttle push [name]` | Sync tasks, supports `-v` `-w N` `--algo` `--dry-run` |
+| `shuttle list` | List all tasks and servers |
+| `shuttle config` | Full config summary (servers, tasks, algo) |
+| `shuttle test <server>` | Test SSH connection |
 | `shuttle init` | Generate config file |
-| `shuttle version` | Show version |
+| `shuttle version` | Version + Go/OS/available algos |
 
 ## 🎮 Shortcuts
 

@@ -46,13 +46,16 @@ go build -o shuttle.exe ./cmd/shuttle/
 ## 🚀 快速开始
 
 ```powershell
-.\shuttle.exe init              # 生成配置模板（可选，TUI 也能直接添加）
-.\shuttle.exe tui               # 启动 TUI → 映射/服务器页面直接添加
+.\shuttle.exe init              # 生成配置模板
+.\shuttle.exe tui               # 启动 TUI
+.\shuttle.exe list              # 列出所有任务/服务器
+.\shuttle.exe config            # 查看完整配置摘要
+.\shuttle.exe test myserver     # 测试 SSH 连接
 .\shuttle.exe push web          # 一键同步
-.\shuttle.exe push --dry-run    # 模拟预览
+.\shuttle.exe push -v --dry-run # 详细预览
 ```
 
-> 无需手动写配置：直接 `shuttle tui` 进入界面，在映射管理和服务器页面用 `A` 添加即可。
+> 无需手动写配置：直接 `shuttle tui` 进入界面即可。
 
 ## 📁 配置文件
 
@@ -80,11 +83,12 @@ tasks:
 | 命令 | 说明 |
 |------|------|
 | `shuttle tui` | 启动 TUI |
-| `shuttle push [name]` | 执行同步 |
-| `shuttle push --dry-run` | 模拟运行（列出每文件操作 + 高危警告） |
-| `shuttle config` | 查看配置文件位置和状态 |
+| `shuttle push [name]` | 执行同步，支持 `-v` `-w N` `--algo` `--dry-run` |
+| `shuttle list` | 列出所有任务和服务器 |
+| `shuttle config` | 完整配置摘要（服务器、任务、算法） |
+| `shuttle test <server>` | 测试 SSH 连接 |
 | `shuttle init` | 生成配置文件 |
-| `shuttle version` | 版本信息 |
+| `shuttle version` | 版本 + Go/OS/可用算法 |
 
 ## 🎮 快捷键
 
