@@ -45,7 +45,6 @@ func runReceive(cmd *cobra.Command, args []string) {
 
 	// 2. 流式生成块签名（不加载全文件）
 	blockSize := delta.CalculateBlockSize(fileSize)
-	algo := delta.GetDefault()
 	sig := delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
 
 	// 3. 发送签名到 stdout
