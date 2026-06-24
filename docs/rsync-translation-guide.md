@@ -238,4 +238,25 @@ On AMD Ryzen 9 8940HX (Zen 4, 5.3 GHz):
 | 64 KB | 51,431 MB/s |
 | 1 MB | 51,839 MB/s |
 
+---
+
+## 10. Appendix: Translating AVX2 to SSE2
+
+Once the AVX2 design was settled, the SSE2/SSSE3 fallback was a mechanical translation:
+
+| AVX2 | SSE2 | Rationale |
+|------|------|-----------|
+| YMM (256-bit) | XMM (128-bit) | half-width registers |
+| 64B/iter | 32B/iter | half the throughput |
+| 8 int32 lanes | 4 int32 lanes | no VEXTRACTI128 needed |
+| `VMOVDQU` | `MOVOU` | Go asm name for 128-bit unaligned load |
+| `VPUNPCKLWD Y5,Y0,Y3` | `VPUNPCKLWD X5,X0,X3` | same instruction, XMM variant |
+| `SHLL $6` (64×) | `SHLL $5` (32×) | block size changed |
+| weights [64..1] | weights [32..1] | re-slice lookup table |
+| `VEXTRACTI128` | not needed | XMM is naturally 128-bit |
+| `PSHUFD $0` broadcast | same | 4-lane broadcast instead of 8 |
+| `VPSRLDQ $8/$4` reduction | same | 4 lanes still need 2 shifts |
+
+Algorithm, deferred reduction, bottom-load structure, VPUNPCK zero-extend — all identical. The AVX2 version took 45→23 iterations of design; the SSE2 version was just editing constants and register names.
+
 Throughput scales with block size as the loop overhead amortizes. Large blocks approach the port 5 bottleneck limit of ~56 GB/s (Zen 4) / ~28 GB/s (Skylake-SP), bounded by the 8 VPUNPCK instructions per iteration that all contend for a single execution port.
