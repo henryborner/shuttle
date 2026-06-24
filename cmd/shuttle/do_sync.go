@@ -82,7 +82,7 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 }
 
 // doSync 执行同步任务
-func doSync(taskName, cfgPath string, dryRun bool) {
+func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoName string) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
@@ -94,8 +94,18 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 	}
 
 	// 应用配置中的哈希算法
-	if cfg.Checksum != "" {
+	if algoName != "" {
+		delta.SetDefault(algoName)
+	} else if cfg.Checksum != "" {
 		delta.SetDefault(cfg.Checksum)
+	}
+
+	// workers override
+	if workers <= 0 {
+		workers = cfg.Workers
+		if workers <= 0 {
+			workers = 4
+		}
 	}
 
 	var tasks []config.Task
@@ -154,7 +164,7 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 			Checksum: task.Options.Checksum,
 			DryRun:   dryRun,
 			SkipDots: !task.Options.ShowDots,
-			Workers:  cfg.Workers,
+			Workers:  workers,
 			Flat:     task.Options.Flat,
 		})
 

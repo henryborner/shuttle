@@ -4,60 +4,91 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
+
+	"strings"
 
 	"github.com/henryborner/shuttle/internal/config"
+	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/tui"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cfgPath string
-	dryRun  bool
-	rootCmd = &cobra.Command{
+	cfgPath  string
+	dryRun   bool
+	verbose  bool
+	workers  int
+	algoName string
+
+	versionStr = "0.1.3.3"
+	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
-		Short: "Shuttle — rsync-style delta sync tool",
+		Short: "Shuttle — rsync-style delta sync for Windows",
 		Long: `Shuttle is a Windows-native file sync tool.
-Uses rsync delta algorithm with config-file defined local→remote mappings.
-Transfers files efficiently over SFTP/SSH.`,
+Powered by a hand-optimized AVX2/SSE2 checksum engine and rsync delta algorithm.
+Config-file driven: define local→remote mappings in syncd.yaml, then push.`,
+		Version: versionStr,
 	}
 )
 
 func main() {
+	// ── push ──
 	pushCmd := &cobra.Command{
 		Use:   "push [task name]",
-		Short: "Run sync tasks",
-		Long:  "Run sync tasks from config. Without task name, runs all.",
+		Short: "Run sync tasks from config",
+		Long:  "Run one or all sync tasks defined in syncd.yaml.",
 		Run:   runPush,
 	}
 	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "config file path")
-	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "dry run without actual sync")
+	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview only, no changes")
+	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "detailed stats output")
+	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "parallel workers (0=config or 4)")
+	pushCmd.Flags().StringVar(&algoName, "algo", "", "override checksum algorithm (md5/xxh64/sha256)")
 	rootCmd.AddCommand(pushCmd)
 
+	// ── tui ──
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "tui",
-		Short: "Launch interactive TUI",
+		Short: "Launch interactive terminal UI",
 		Run:   runTUI,
 	})
 
+	// ── list ──
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all tasks and servers from config",
+		Run:   runList,
+	})
+
+	// ── config ──
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "config",
-		Short: "Show config file info and location",
+		Short: "Show full config summary",
 		Run:   runConfig,
 	})
 
+	// ── test ──
+	testCmd := &cobra.Command{
+		Use:   "test <server name>",
+		Short: "Test SSH connection to a server",
+		Args:  cobra.ExactArgs(1),
+		Run:   runTest,
+	}
+	rootCmd.AddCommand(testCmd)
+
+	// ── init ──
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
-		Short: "Generate sample config in current directory",
+		Short: "Generate sample syncd.yaml in current directory",
 		Run:   runInit,
 	})
 
+	// ── version ──
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
-		Short: "Show version info",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Shuttle v0.1.3.2 - rsync-style delta sync for Windows")
-			fmt.Println("Checksum: AVX2/SSE2/Go three-tier | Strong: MD5/xxh64/SHA256 | Transport: SFTP")
-		},
+		Short: "Show version and build info",
+		Run:   runVersion,
 	})
 
 	if err := rootCmd.Execute(); err != nil {
@@ -65,24 +96,99 @@ func main() {
 	}
 }
 
+func runVersion(cmd *cobra.Command, args []string) {
+	fmt.Printf("Shuttle v%s — rsync-style delta sync for Windows\n", versionStr)
+	fmt.Printf("  Go:     %s\n", runtime.Version())
+	fmt.Printf("  OS:     %s\n", runtime.GOOS)
+	fmt.Printf("  Arch:   %s\n", runtime.GOARCH)
+	fmt.Printf("  Engine: AVX2/SSE2/Go 3-tier checksum\n")
+	fmt.Printf("  Strong: %s\n", delta.GetDefault())
+	fmt.Printf("  Algos:  %s\n", strings.Join(delta.ListAlgos(), ", "))
+}
+
 func runPush(cmd *cobra.Command, args []string) {
 	taskName := ""
 	if len(args) > 0 {
 		taskName = args[0]
 	}
-	doSync(taskName, cfgPath, dryRun)
+	doSync(taskName, cfgPath, dryRun, verbose, workers, algoName)
 }
 
 func runConfig(cmd *cobra.Command, args []string) {
-	cwd, _ := os.Getwd()
-	fmt.Printf("CWD: %s\n", cwd)
-	fmt.Printf("Config: syncd.yaml\n")
-	if _, err := os.Stat("syncd.yaml"); err == nil {
-		fmt.Println("Found syncd.yaml")
-		fmt.Println("Found syncd.yaml")
-	} else {
-		fmt.Println("Not found — run 'shuttle init' to create")
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config found: %v\n", err)
+		fmt.Println("Run 'shuttle init' to create one.")
+		return
 	}
+	fmt.Printf("Config: syncd.yaml  (version %s)\n", cfg.Version)
+	fmt.Printf("Language: %s  |  Checksum: %s  |  Workers: %d\n",
+		cfg.Language, cfg.Checksum, cfg.Workers)
+	fmt.Printf("Servers: %d  |  Tasks: %d\n", len(cfg.Servers), len(cfg.Tasks))
+	fmt.Println()
+	fmt.Println("── Servers ──")
+	for _, s := range cfg.Servers {
+		auth := "key"
+		if s.Pass != "" {
+			auth = "password"
+		}
+		fmt.Printf("  %-15s %s@%s:%d  (%s)\n", s.Name, s.User, s.Host, s.Port, auth)
+	}
+	fmt.Println()
+	fmt.Println("── Tasks ──")
+	for _, t := range cfg.Tasks {
+		flags := ""
+		if t.Options.Delete {
+			flags += " delete"
+		}
+		if t.Options.Checksum {
+			flags += " checksum"
+		}
+		if t.Options.Flat {
+			flags += " flat"
+		}
+		if flags == "" {
+			flags = " (defaults)"
+		}
+		fmt.Printf("  %-15s %s → %s%s\n", t.Name, t.Source, t.Target, flags)
+	}
+}
+
+func runList(cmd *cobra.Command, args []string) {
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
+		return
+	}
+	fmt.Println("Tasks:")
+	for _, t := range cfg.Tasks {
+		fmt.Printf("  %-15s %s\n", t.Name, t.Source)
+	}
+	fmt.Println()
+	fmt.Println("Servers:")
+	for _, s := range cfg.Servers {
+		fmt.Printf("  %-15s %s@%s:%d\n", s.Name, s.User, s.Host, s.Port)
+	}
+}
+
+func runTest(cmd *cobra.Command, args []string) {
+	serverName := args[0]
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
+		os.Exit(1)
+	}
+	s := cfg.GetServer(serverName)
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Server not found: %s\n", serverName)
+		os.Exit(1)
+	}
+	fmt.Printf("Testing %s@%s:%d ...\n", s.User, s.Host, s.Port)
+	if err := testDial(s.Host, s.Port, s.User, s.KeyFile, s.Pass); err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("OK — connected successfully")
 }
 
 func runInit(cmd *cobra.Command, args []string) {
@@ -91,7 +197,7 @@ func runInit(cmd *cobra.Command, args []string) {
 		return
 	}
 	os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
-	fmt.Println("Created syncd.yaml")
+	fmt.Println("Created syncd.yaml — edit it and run 'shuttle push'")
 }
 
 const initTemplate = `# Shuttle 同步配置文件
