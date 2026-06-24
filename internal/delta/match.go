@@ -243,12 +243,6 @@ func (me *MatchEngine) computeStrong(data []byte) []byte {
 	return h.Sum(nil)
 }
 
-// verifyStrong compares strong checksums (for external/test use).
-// verifyStrong 比较强校验和（用于外部/测试调用）。
-func (me *MatchEngine) verifyStrong(data []byte, idx int) bool {
-	return bytes.Equal(me.computeStrong(data), me.checksums[idx].Sum2)
-}
-
 // GenerateSignature generates block signatures for file B (called by the receiver).
 // GenerateSignature 为文件 B 生成块签名（接收端调用）。
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
