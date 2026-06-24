@@ -154,7 +154,7 @@ Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 
 | Version | Key change | Loop instrs | Notes |
 |---------|-----------|-------------|-------|
-| v0.1.3 | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | Baseline |
+| v0.1.3.0 | Signed VPMADDUBSW + VPMOVSXWD + per-iter s1 reduction | 45 | Baseline |
 | — | Unsigned + VPUNPCK zero-extend | 41 | Save VEXTRACTI128 ×4 |
 | — | Preload lower weight table Y13 | 36 | Save LEAQ+VMOVDQU per iter |
 | — | Deferred s1 reduction (rsync-style) | 27 | s1 stays in Y14 vector |
@@ -207,14 +207,22 @@ Unused YMM registers: Y1, Y9, Y10, Y11 (available for future optimizations).
 
 ## 8. Test Coverage
 
-`avx2_test.go` — parity test comparing AVX2 output against byte-by-byte reference (no CHAR_OFFSET):
+**Parity tests** (`avx2_test.go`) — compare AVX2 and SSE2 output against byte-by-byte reference (no CHAR_OFFSET):
 
-| Test case | Data | Purpose |
-|-----------|------|---------|
-| zeros-64/128 | all 0x00 | minimum values |
-| ones-64/128/256 | all 0xFF | maximum unsigned values (signed-critical) |
-| inc-64/128/200 | 0,1,2,…,n-1 | incremental, crosses 127 boundary |
-| rand-128/700/2048 | crypto/rand | arbitrary binary data |
+| Test | Data | Purpose |
+|------|------|---------|
+| `TestAVX2Parity` (11 cases) | zeros, 0xFF, incremental, random | verify AVX2 engine |
+| `TestSSE2Parity` (10 cases) | zeros, 0xFF, incremental, random | verify SSE2 engine |
+
+**Performance benchmark** (`tier_bench_test.go`) — three-way comparison:
+
+| Benchmark | Engine |
+|-----------|--------|
+| `SSE2/*KB` | `checksum1SSE2` (32B/iter, XMM) |
+| `AVX2/*KB` | `checksum1AVX2` (64B/iter, YMM) |
+| `Go/*KB` | pure Go 128B batch (no SIMD) |
+
+**Integration tests** (`delta_test.go`) — end-to-end delta round-trip, identical file, example usage.
 
 ---
 
