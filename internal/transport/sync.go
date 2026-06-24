@@ -18,12 +18,12 @@ type SyncOptions struct {
 	Target   string
 	Delete   bool
 	Exclude  []string
-	Protect  []string // 保护模式：远端匹配路径绝不覆盖/删除
+	Protect  []string // protect patterns: matching remote paths are never overwritten/deleted / 保护模式：匹配远端路径绝不覆盖/删除
 	Checksum bool
 	DryRun   bool
-	SkipDots bool // skip files/dirs starting with "." (default true for safety)
-	Workers  int  // delta并行数，0默认=4，1=串行
-	Flat     bool // 直接映射内容，不套源文件夹名
+	SkipDots bool // skip files/dirs starting with "." (default true for safety) / 跳过.开头的文件
+	Workers  int  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
+	Flat     bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
 }
 
 type SyncStats struct {
@@ -51,7 +51,8 @@ func NewSyncEngine(tr Transport) *SyncEngine {
 
 func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 
-// Sync 执行同步
+// Sync executes the sync operation.
+// Sync 执行同步。
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	stats := &SyncStats{}
 	localFiles, err := scanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
@@ -59,6 +60,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 	remoteFiles := make(map[string]FileInfo)
+	// scan remote target root once; avoid repeated Walk for each subdirectory
 	// 从远端 target 根目录只遍历一次，避免对每个子目录重复 Walk
 	entries, err := e.transport.ListDirRecursive(opts.Target)
 	if err == nil {
@@ -70,8 +72,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
-	// ── 第一遍：新文件（串行，共用 SFTP 连接） ──
-	// ── 同时收集需要 delta 的文件 ──
+	// First pass: new files (serial, shared SFTP connection)
+	// Collect files that need delta at the same time.
+	// 第一遍：新文件（串行，共用 SFTP 连接）。
+	// 同时收集需要 delta 的文件。
 	type deltaJob struct {
 		lf         localFileInfo
 		relPath    string
@@ -89,6 +93,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
 
+		// protect check: remote exists and matches protect pattern → skip
 		// 保护检查：远端已有且匹配 protect 模式 → 禁止覆盖
 		if exists && MatchProtect(remotePath, opts.Protect) {
 			stats.ProtectedFiles++
@@ -122,6 +127,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			}
 		} else {
 			needUpd := lf.Size != rf.Size || !lf.ModTime.Truncate(time.Second).Equal(rf.ModTime.Truncate(time.Second))
+			// checksum mode: still do delta content verification when size+mtime match (read-only remote)
 			// checksum 模式：size+mtime 对上时仍进 delta 做内容校验（远端只读不写）
 			if needUpd || opts.Checksum {
 				deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
@@ -137,7 +143,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		stats.TotalBytes += lf.Size
 	}
 
-	// ── 第二遍：delta 传输（并行 worker pool，实时回调防 TUI 卡顿） ──
+	// Second pass: delta transfers (parallel worker pool, real-time callbacks)
+	// 第二遍：delta 传输（并行 worker pool，实时回调防 TUI 卡顿）
 	if len(deltaJobs) > 0 && !opts.DryRun {
 		workers := opts.Workers
 		if workers <= 0 {
@@ -210,6 +217,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				}
 			}
 			if !found {
+				// protect check: remote path matches protect pattern → skip deletion
 				// 保护检查：远端路径匹配 protect 模式则跳过删除
 				if MatchProtect(rf.Path, opts.Protect) {
 					stats.ProtectedFiles++
@@ -220,6 +228,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 					continue
 				}
 				if rf.IsDir {
+					// recursively delete directory
 					// 递归删除目录
 					if !opts.DryRun {
 						if err := e.transport.RemoveRecursive(rf.Path); err != nil {
@@ -249,7 +258,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 }
 
 func (e *SyncEngine) uploadFile(info localFileInfo, remotePath string) error {
-	// 确保远程父目录存在
+	// Ensure remote parent directory exists.
+	// 确保远程父目录存在。
 	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
 		e.transport.MkdirAll(dir)
 	}
@@ -264,7 +274,8 @@ func (e *SyncEngine) uploadFile(info localFileInfo, remotePath string) error {
 	if err := e.transport.PutFile(remotePath, pr, info.Size); err != nil {
 		return err
 	}
-	// 同步 mtime，避免下次比对时因上传时间 ≠ 本地修改时间而误判
+	// sync mtime to avoid false "changed" detection on next compare.
+	// 同步 mtime，避免下次比对时因上传时间≠本地修改时间而误判。
 	return e.transport.SetModTime(remotePath, info.ModTime)
 }
 
@@ -286,21 +297,29 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// uploadFileDelta is an rsync-style delta transfer: get remote old file signature →
+// delta match → push instructions. Uses goroutines to read local file and remote
+// signature in parallel to shorten pipeline latency. Large files use mmap to avoid
+// loading entirely into memory; falls back to ReadFile on mmap failure.
+// If delta fails (e.g. no shuttle on remote), automatically falls back to full upload.
+//
 // uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
+	// read local new file (I/O) and remote signature (network) in parallel
 	// 并行读取本地新文件（I/O）和远端签名（网络）
 	type localResult struct {
 		data  []byte
-		close func() error // mmap 释放函数
+		close func() error // mmap release function / mmap 释放函数
 		err   error
 	}
 	localDone := make(chan localResult, 1)
 	go func() {
 		d, closer, e := util.MmapReadOnly(info.Path)
 		if e != nil {
+			// mmap failed → fallback to os.ReadFile (non-mmap system or permission issue)
 			// mmap 失败 → 回退 os.ReadFile（非 mmap 系统或权限不足）
 			raw, re := os.ReadFile(info.Path)
 			localDone <- localResult{data: raw, err: re}
@@ -317,11 +336,13 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		if lr.close != nil {
 			lr.close()
 		}
-		// delta 不可用，回退全量上传（远端可能未部署 shuttle agent）
+		// delta unavailable, fallback to full upload (remote may not have shuttle agent).
+		// delta 不可用，回退全量上传（远端可能未部署 shuttle agent）。
 		_ = e.uploadFile(info, remotePath)
 		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
 	}
 
+	// read stderr concurrently
 	// 并发读 stderr
 	var errBuf strings.Builder
 	stderrDone := make(chan struct{})
@@ -344,6 +365,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
 	}
 
+	// wait for local file to finish reading
 	// 等待本地文件读完
 	lr := <-localDone
 	if lr.err != nil {
@@ -355,22 +377,27 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		defer lr.close()
 	}
 
+	// local matching (file data + signature both ready)
 	// 本地匹配（文件数据+签名已就绪）
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 	insts := eng.Search(lr.data)
 
-	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）
-	// 此时关闭 stdin 通知远端无需重建，避免无意义的磁盘写入
+	// Detect perfect match: only trailing partial block remains (normal for identical files).
+	// Close stdin to signal remote: no reconstruction needed, avoid pointless disk writes.
+	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）。
+	// 此时关闭 stdin 通知远端无需重建，避免无意义的磁盘写入。
 	if eng.LiteralBytes < int64(sig.BlockSize) {
 		stdin.Close()
 		<-stderrDone
+		// sync mtime just in case
 		// 同步 mtime（以防万一）
 		e.transport.SetModTime(remotePath, info.ModTime)
 		savedBytes = info.Size
 		return 0, savedBytes, nil
 	}
 
+	// 3. send instructions to remote (stdin must still be alive)
 	// 3. 发送指令到远端（stdin 必须还活着）
 	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
 		stdin.Close()
@@ -379,6 +406,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		return info.Size, 0, fmt.Errorf("delta encode instructions: %w", err)
 	}
 
+	// 4. close stdin (signal remote to start reconstruction), wait for remote to finish
 	// 4. 关闭 stdin（信号远端开始重建），等待远端完成
 	stdin.Close()
 	<-stderrDone
@@ -387,7 +415,8 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
 
-	// 同步 mtime，避免远端重建后的"当前时间"与本地不一致
+	// sync mtime to prevent remote reconstruction's "current time" from mismatching local.
+	// 同步 mtime，避免远端重建后的"当前时间"与本地不一致。
 	e.transport.SetModTime(remotePath, info.ModTime)
 
 	savedBytes = int64(len(lr.data)) - eng.LiteralBytes

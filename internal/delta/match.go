@@ -6,26 +6,27 @@ import (
 	"io"
 )
 
-// BlockSum 表示文件B中一个块的校验和
+// BlockSum represents a single block checksum from file B.
+// BlockSum 表示文件 B 中一个块的校验和。
 type BlockSum struct {
-	Index  int    // 块索
-	Sum1   uint32 // 弱滚动校验和
-	Sum2   []byte // 强校验和 (MD5/SHA256)
-	Offset int64  // 块在文件中的偏移
-	Length int32  // 块长
+	Index  int    // block index / 块索引
+	Sum1   uint32 // weak rolling checksum / 弱滚动校验和
+	Sum2   []byte // strong checksum (MD5/SHA256) / 强校验和
+	Offset int64  // byte offset within the file / 块在文件中的偏移
+	Length int32  // actual block length (last block may be shorter) / 块长（末块可能更短）
 }
 
 type MatchResult struct {
-	IsLiteral bool   // true = 文字数据, false = 块引
-	Data      []byte // 文字数据 (IsLiteral=true)
-	BlockIdx  int    // 匹配的块索引 (IsLiteral=false)
-	Offset    int64  // 来源中的偏移（用于排序）
+	IsLiteral bool   // true = literal data, false = block reference / true=字面量, false=块引用
+	Data      []byte // literal payload / 字面量数据
+	BlockIdx  int    // matched block index / 匹配的块索引
+	Offset    int64  // source offset (for ordering) / 来源中的偏移（用于排序）
 }
 
 type Signature struct {
-	BlockSize int32      // 块大
-	BlockSums []BlockSum // 所有块的校验和
-	FileSize  int64      // 文件原始大小
+	BlockSize int32      // block size / 块大小
+	BlockSums []BlockSum // all block checksums / 所有块的校验和
+	FileSize  int64      // original file size / 文件原始大小
 }
 
 type hashEntry struct {
@@ -45,23 +46,31 @@ func computeTableSize(blockCount int) uint32 {
 	return ts
 }
 
-// MatchEngine 增量匹配引擎
+// CHUNK_SIZE is the maximum literal chunk size (same as rsync's 32KB).
+// Large literals are split into CHUNK_SIZE pieces to ensure the receiver
+// never allocates more than 32KB at once (safe for low-memory servers).
+// CHUNK_SIZE 字面量分块上限，同 rsync 的 32KB。
+// 大字面量拆分为多个 CHUNK_SIZE 块，确保接收端单次缓冲区分配不超过此值。
+const CHUNK_SIZE = 32 * 1024
+
+// MatchEngine is the delta match engine.
+// MatchEngine 增量匹配引擎。
 type MatchEngine struct {
 	blockSize  int32
-	strongHash func() hash.Hash // 强校验和工厂
-	checksums  []BlockSum       // 目标端发来的校验和列
-	hashTable  [][]hashEntry    // 动态大小哈希表
-	tableSize  uint32           // 当前表大小
+	strongHash func() hash.Hash // strong checksum factory / 强校验和工厂
+	checksums  []BlockSum       // checksums from the receiver / 目标端发来的校验和列表
+	hashTable  [][]hashEntry    // dynamic hash table / 动态大小哈希表
+	tableSize  uint32           // current table size / 当前表大小
 
-	// 统计
+	// stats / 统计
 	HashHits     int
 	FalseAlarms  int
 	Matches      int
 	LiteralBytes int64
 }
 
-// NewMatchEngine 创建匹配引擎
-
+// NewMatchEngine creates a new match engine.
+// NewMatchEngine 创建匹配引擎。
 func NewMatchEngine(blockSize int32, strongAlgo string) *MatchEngine {
 	algo, err := GetAlgo(strongAlgo)
 	if err != nil {
@@ -106,21 +115,18 @@ func (me *MatchEngine) buildHashTable() {
 	}
 }
 
-// Search 在源数据中搜索匹配，返回指令序列
+// Search searches source data for matches, returning an instruction sequence.
+// Search 在源数据中搜索匹配，返回指令序列。
 func (me *MatchEngine) Search(data []byte) []MatchResult {
 	if len(me.checksums) == 0 || len(data) < int(me.blockSize) {
-
-		return []MatchResult{{
-			IsLiteral: true,
-			Data:      data,
-		}}
+		return me.emitLiterals(nil, data, 0)
 	}
 
 	var results []MatchResult
 	rs := NewRollingSum(data[:me.blockSize])
 	offset := int64(0)
 	lastMatch := int64(0)
-	wantIdx := 0 // 鼓励相邻匹配
+	wantIdx := 0 // encourage adjacent matches / 鼓励相邻匹配
 
 	for offset+int64(me.blockSize) <= int64(len(data)) {
 		matched := false
@@ -139,14 +145,19 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		if len(bucket) > 0 {
 			me.HashHits++
 
+			// Cache strong sum per offset (same as rsync's done_csum2).
+			// 同一 offset 只算一次强校验和（同 rsync done_csum2）。
+			blockData := data[offset : offset+int64(me.blockSize)]
+			computedSum2 := me.computeStrong(blockData)
+
 			for _, entry := range bucket {
 				if entry.sum1 != rs.Value() {
 					continue
 				}
 
-				// Level 3: 强校验和验证
-				blockData := data[offset : offset+int64(me.blockSize)]
-				if !me.verifyStrong(blockData, entry.idx) {
+				// Level 3: strong checksum verification (pre-computed, zero overhead).
+				// Level 3: 强校验和验证（预计算，无重复开销）。
+				if !bytes.Equal(computedSum2, me.checksums[entry.idx].Sum2) {
 					me.FalseAlarms++
 					continue
 				}
@@ -155,22 +166,17 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 				if matchIdx != wantIdx && wantIdx < len(me.checksums) {
 					wantEntry := me.checksums[wantIdx]
 					if wantEntry.Sum1 == rs.Value() &&
-						me.verifyStrong(blockData, wantIdx) {
+						bytes.Equal(computedSum2, wantEntry.Sum2) {
 						matchIdx = wantIdx
 					}
 				}
 				wantIdx = matchIdx + 1
 
 				if offset > lastMatch {
-					results = append(results, MatchResult{
-						IsLiteral: true,
-						Data:      data[lastMatch:offset],
-						Offset:    lastMatch,
-					})
-					me.LiteralBytes += offset - lastMatch
+					results = me.emitLiterals(results, data[lastMatch:offset], lastMatch)
 				}
 
-				// 发送块引用
+				// emit block reference / 发送块引用
 				results = append(results, MatchResult{
 					IsLiteral: false,
 					BlockIdx:  matchIdx,
@@ -197,43 +203,60 @@ func (me *MatchEngine) Search(data []byte) []MatchResult {
 		}
 	}
 
-	// 剩余文字数据
+	// remaining literal data / 剩余文字数据
 	if lastMatch < int64(len(data)) {
-		results = append(results, MatchResult{
-			IsLiteral: true,
-			Data:      data[lastMatch:],
-			Offset:    lastMatch,
-		})
-		me.LiteralBytes += int64(len(data)) - lastMatch
+		results = me.emitLiterals(results, data[lastMatch:], lastMatch)
 	}
 
 	return results
 }
 
-// verifyStrong 比较强校验和
-func (me *MatchEngine) verifyStrong(data []byte, idx int) bool {
+// emitLiterals splits literal data into ≤CHUNK_SIZE MatchResults,
+// ensuring the receiver's single buffer allocation stays ≤ 32KB.
+// emitLiterals 将字面量数据拆分为多个 ≤CHUNK_SIZE 的 MatchResult，
+// 确保接收端单次缓冲区分配不超过 32KB（小内存服务器安全）。
+func (me *MatchEngine) emitLiterals(results []MatchResult, data []byte, offset int64) []MatchResult {
+	for len(data) > 0 {
+		n := int32(len(data))
+		if n > CHUNK_SIZE {
+			n = CHUNK_SIZE
+		}
+		results = append(results, MatchResult{
+			IsLiteral: true,
+			Data:      data[:n],
+			Offset:    offset,
+		})
+		me.LiteralBytes += int64(n)
+		data = data[n:]
+		offset += int64(n)
+	}
+	return results
+}
+
+// computeStrong computes the strong checksum for the given data.
+// Used in the search loop to avoid repeated hash.New calls.
+// computeStrong 计算给定数据的强校验和（用于搜索循环预计算，避免重复 hash.New）。
+func (me *MatchEngine) computeStrong(data []byte) []byte {
 	h := me.strongHash()
 	h.Reset()
 	h.Write(data)
-	sum := h.Sum(nil)
-
-	expected := me.checksums[idx].Sum2
-	if len(sum) != len(expected) {
-		return false
-	}
-	for i := range sum {
-		if sum[i] != expected[i] {
-			return false
-		}
-	}
-	return true
+	return h.Sum(nil)
 }
 
-// GenerateSignature 为文件B生成块签名（接收端调用）
+// verifyStrong compares strong checksums (for external/test use).
+// verifyStrong 比较强校验和（用于外部/测试调用）。
+func (me *MatchEngine) verifyStrong(data []byte, idx int) bool {
+	return bytes.Equal(me.computeStrong(data), me.checksums[idx].Sum2)
+}
+
+// GenerateSignature generates block signatures for file B (called by the receiver).
+// GenerateSignature 为文件 B 生成块签名（接收端调用）。
 func GenerateSignature(data []byte, blockSize int32, strongAlgo string) *Signature {
 	return GenerateSignatureReader(bytes.NewReader(data), int64(len(data)), blockSize, strongAlgo)
 }
 
+// GenerateSignatureReader generates block signatures from an io.Reader,
+// avoiding loading the entire file into memory.
 // GenerateSignatureReader 从 io.Reader 流式生成块签名，避免全量读入内存。
 func GenerateSignatureReader(r io.Reader, fileSize int64, blockSize int32, strongAlgo string) *Signature {
 	sig := &Signature{

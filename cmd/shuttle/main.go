@@ -1,3 +1,5 @@
+// main.go — Shuttle CLI entry point (Cobra)
+// main.go — Shuttle CLI entry point (Cobra)
 // main.go — Shuttle CLI 入口 (Cobra)
 package main
 
@@ -33,7 +35,7 @@ Config-file driven: define local→remote mappings in syncd.yaml, then push.`,
 )
 
 func main() {
-	// ── push ──
+	// push / 推送命令
 	pushCmd := &cobra.Command{
 		Use:   "push [task name]",
 		Short: "Run sync tasks from config",
@@ -47,28 +49,28 @@ func main() {
 	pushCmd.Flags().StringVar(&algoName, "algo", "", "override checksum algorithm (md5/xxh64/sha256)")
 	rootCmd.AddCommand(pushCmd)
 
-	// ── tui ──
+	// tui / 终端界面
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "tui",
 		Short: "Launch interactive terminal UI",
 		Run:   runTUI,
 	})
 
-	// ── list ──
+	// list / 列出任务
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List all tasks and servers from config",
 		Run:   runList,
 	})
 
-	// ── config ──
+	// config / 配置信息
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "config",
 		Short: "Show full config summary",
 		Run:   runConfig,
 	})
 
-	// ── test ──
+	// test / 测试连接
 	testCmd := &cobra.Command{
 		Use:   "test <server name>",
 		Short: "Test SSH connection to a server",
@@ -77,14 +79,14 @@ func main() {
 	}
 	rootCmd.AddCommand(testCmd)
 
-	// ── init ──
+	// init / 生成配置
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
 		Short: "Generate sample syncd.yaml in current directory",
 		Run:   runInit,
 	})
 
-	// ── version ──
+	// version / 版本信息
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Show version and build info",

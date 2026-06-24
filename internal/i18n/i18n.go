@@ -1,10 +1,9 @@
-
-
 package i18n
 
 import "sync"
 
-// Lang 语言类型
+// Lang is the language type.
+// Lang 语言类型。
 type Lang string
 
 const (
@@ -31,7 +30,6 @@ func Current() Lang {
 	defer mu.RUnlock()
 	return current
 }
-
 
 func T(key string) string {
 	mu.RLock()

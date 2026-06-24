@@ -43,7 +43,8 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			// If the key is passphrase-protected, try with empty passphrase.
+			// If passphrase-protected, try empty passphrase.
+			// 如果有密码保护，尝试空密码。
 			if strings.Contains(err.Error(), "passphrase") || strings.Contains(err.Error(), "encrypted") {
 				signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte{})
 			}

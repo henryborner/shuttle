@@ -1,6 +1,6 @@
-// bigfile_bench_test.go — 大文件比对性能基准测试（无需 SSH）
+// bigfile_bench_test.go — large file delta cost benchmark (no SSH required)
 //
-// 用法:
+// Usage:
 //   go test -run TestModTimeTruncation -v ./internal/transport/
 //   go test -run TestDeltaCost -v -timeout 5m ./internal/transport/
 
@@ -17,11 +17,11 @@ import (
 	"github.com/henryborner/shuttle/internal/util"
 )
 
-// TestModTimeTruncation 验证 ModTime 截断修复
+// TestModTimeTruncation verifies ModTime truncation fix
 func TestModTimeTruncation(t *testing.T) {
 	base := time.Date(2025, 6, 23, 12, 0, 0, 0, time.UTC)
-	localMT := base.Add(123456789 * time.Nanosecond) // NTFS 纳秒精度
-	remoteMT := base                                 // SFTP 秒级精度
+	localMT := base.Add(123456789 * time.Nanosecond) // NTFS nanosecond precision
+	remoteMT := base                                 // SFTP second precision
 
 	oldWay := !localMT.Equal(remoteMT)
 	t.Logf("Old way (Equal):        needUpd=%v — FALSE positive!", oldWay)
@@ -36,8 +36,8 @@ func TestModTimeTruncation(t *testing.T) {
 	}
 }
 
-// TestDeltaCost 测量无变化大文件的 delta 计算开销
-// 这就是修复前每次误判为"需要更新"时浪费的时间
+// TestDeltaCost measures delta calculation overhead on unchanged large files.
+// This is the time wasted every time the old code falsely flagged "needs update".
 func TestDeltaCost(t *testing.T) {
 	testFile := filepath.Join("..", "..", "testdata", "local", "bigfile.dat")
 	fi, err := os.Stat(testFile)
@@ -47,7 +47,7 @@ func TestDeltaCost(t *testing.T) {
 	sizeMB := float64(fi.Size()) / 1024 / 1024
 	fmt.Printf("\n  File: %s (%.0f MB)\n", testFile, sizeMB)
 
-	// mmap 读取（不全量读入内存）
+	// mmap (avoids loading full file into memory)
 	data, closer, err := util.MmapReadOnly(testFile)
 	if err != nil {
 		data, err = os.ReadFile(testFile)
@@ -63,7 +63,7 @@ func TestDeltaCost(t *testing.T) {
 	algo := delta.GetDefault()
 	numBlocks := (fi.Size() + int64(blockSize) - 1) / int64(blockSize)
 
-	// ── 模拟修复前的浪费：对无变化文件做完整 delta 流程 ──
+	// -- Simulate pre-fix waste: full delta on unchanged file --
 	fmt.Println("\n  ╔══════════════════════════════════════╗")
 	fmt.Println("  ║  Simulating OLD behavior (pre-fix)  ║")
 	fmt.Println("  ╚══════════════════════════════════════╝")
@@ -91,7 +91,7 @@ func TestDeltaCost(t *testing.T) {
 	fmt.Printf("  ─────────────────────────────────────\n")
 	fmt.Printf("  Total OLD cost:   %v  ← WASTED on unchanged files!\n", totalOld.Round(time.Millisecond))
 
-	// ── 修复后：只做元数据比较 ──
+	// -- Fix: metadata-only comparison --
 	fmt.Println("\n  ╔══════════════════════════════════════╗")
 	fmt.Println("  ║  Simulating NEW behavior (fixed)    ║")
 	fmt.Println("  ╚══════════════════════════════════════╝")
@@ -104,7 +104,7 @@ func TestDeltaCost(t *testing.T) {
 	t5 := time.Now()
 	fmt.Printf("  Metadata compare: %v  (size + modtime truncated to sec)\n", t5.Sub(t4))
 
-	// ── 总结 ──
+	// -- Summary --
 	speedup := float64(totalOld) / float64(max(t5.Sub(t4), 1))
 	perBlock := totalOld / time.Duration(numBlocks)
 

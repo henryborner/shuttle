@@ -78,6 +78,7 @@ func (m *settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			m.cfg.Checksum = m.algoOpts[m.algoIdx]
 			saveConfig(m.cfg, m.cfgPath)
 		case 2:
+			// workers: 1(serial) → 2 → 4 → 8 → 1
 			// 并行数: 1(串行) → 2 → 4 → 8 → 1
 			switch m.workerVal {
 			case 1:

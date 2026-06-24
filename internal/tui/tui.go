@@ -26,7 +26,7 @@ type startSyncMsg struct {
 // deletePreviewMsg carries orphan file list from remote scan
 type deletePreviewMsg struct {
 	taskName string
-	files    []string // 远端多余文件列表
+	files    []string // orphan files on remote / 远端多余文件列表
 	err      string
 }
 

@@ -1,4 +1,5 @@
-// 允许用户注册自定义哈希算法，替换硬编码的 switch
+// Package delta allows registering custom hash algorithms, replacing hard-coded switches.
+// 允许用户注册自定义哈希算法，替换硬编码的 switch。
 package delta
 
 import (
@@ -7,11 +8,12 @@ import (
 	"sync"
 )
 
-// ChecksumAlgo 描述一个校验和算法
+// ChecksumAlgo describes a checksum algorithm.
+// ChecksumAlgo 描述一个校验和算法。
 type ChecksumAlgo struct {
-	Name   string           // 算法名称，如 "md5", "sha256", "xxh3"
-	New    func() hash.Hash // 哈希构造函
-	Length int              // 输出字节
+	Name   string           // algorithm name e.g. "md5", "sha256", "xxh3" / 算法名称
+	New    func() hash.Hash // hash constructor / 哈希构造函数
+	Length int              // output bytes / 输出字节数
 }
 
 var (
@@ -39,20 +41,22 @@ func init() {
 	})
 }
 
-// Register 注册一个校验和算法（线程安全）
+// Register registers a checksum algorithm (thread-safe).
+// Register 注册一个校验和算法（线程安全）。
 func Register(algo ChecksumAlgo) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[algo.Name] = algo
 }
 
-// GetAlgo 获取已注册的算法
+// GetAlgo retrieves a registered algorithm.
+// GetAlgo 获取已注册的算法。
 func GetAlgo(name string) (ChecksumAlgo, error) {
 	registryMu.RLock()
 	algo, ok := registry[name]
-	registryMu.RUnlock() // 必须在调用 ListAlgos() 前释放，避免死锁
+	registryMu.RUnlock() // release before ListAlgos() to avoid deadlock / 在 ListAlgos() 前释放，避免死锁
 	if !ok {
-		return ChecksumAlgo{}, fmt.Errorf("未知的校验和算法: %s (已注册: %v)", name, ListAlgos())
+		return ChecksumAlgo{}, fmt.Errorf("unknown checksum algorithm / 未知校验和算法: %s (registered / 已注册: %v)", name, ListAlgos())
 	}
 	return algo, nil
 }
@@ -67,7 +71,8 @@ func ListAlgos() []string {
 	return names
 }
 
-// SetDefault 设置默认算法
+// SetDefault sets the default algorithm.
+// SetDefault 设置默认算法。
 func SetDefault(name string) error {
 	if _, err := GetAlgo(name); err != nil {
 		return err
@@ -78,7 +83,8 @@ func SetDefault(name string) error {
 	return nil
 }
 
-// GetDefault 获取默认算法
+// GetDefault returns the current default algorithm name.
+// GetDefault 获取默认算法名称。
 func GetDefault() string {
 	registryMu.RLock()
 	defer registryMu.RUnlock()

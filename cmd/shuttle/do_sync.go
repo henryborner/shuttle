@@ -12,7 +12,8 @@ import (
 	"github.com/henryborner/shuttle/internal/util"
 )
 
-// highRiskDryExts 高危文件扩展名，dry-run 时额外警告
+// highRiskDryExts are high-risk file extensions for extra warnings during dry-run.
+// highRiskDryExts 高危文件扩展名，dry-run 时额外警告。
 var highRiskDryExts = map[string]string{
 	".db": "database", ".sql": "database", ".sqlite": "database", ".sqlite3": "database",
 	".mdb": "database", ".myd": "database", ".myi": "database", ".frm": "database", ".ibd": "database",
@@ -23,7 +24,8 @@ var highRiskDryExts = map[string]string{
 	".service": "systemd unit", ".timer": "systemd unit",
 }
 
-// dryRunHook 在 dry-run 模式下列出每个文件的操作
+// dryRunHook lists each file's operation in dry-run mode.
+// dryRunHook 在 dry-run 模式下列出每个文件的操作。
 type dryRunHook struct {
 	dry          bool
 	deletedFiles []string
@@ -56,6 +58,7 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	return nil
 }
 func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
+	// secondary warning: high-risk files in dry-run delete list
 	// 二次警告：dry-run 删除清单中有高危文件
 	var risky []string
 	for _, f := range h.deletedFiles {
@@ -64,6 +67,7 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 		if kind, ok := highRiskDryExts[ext]; ok {
 			risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))
 		} else if ext == "" {
+			// no-extension files may also be important
 			// 无扩展名文件也可能是重要的
 			if kind, ok := highRiskDryExts["."+base]; ok {
 				risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))

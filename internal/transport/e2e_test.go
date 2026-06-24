@@ -54,35 +54,35 @@ func TestE2EDeltaLarge(t *testing.T) {
 	client := sshClient(t)
 	defer client.Close()
 
-	// 1MB 随机数据
+	// 1MB random data
 	_ = rand.Reader
 	oldData := make([]byte, 1024*1024)
 	for i := range oldData {
 		oldData[i] = byte('a' + mrand.Intn(26))
 	}
 
-	// 写入远程
+	// write to remote
 	s, _ := client.NewSession()
 	s.Stdin = bytes.NewReader(oldData)
 	s.Run("cat > /tmp/shuttle_e2e_large.dat")
 	s.Close()
 
-	// 新文件：中间插入数据
+	// new file: insert data in the middle
 	newData := make([]byte, len(oldData)+2048)
 	copy(newData, oldData[:len(oldData)/2])
 	insert := []byte("[[[SHUTTLE DELTA INSERTED DATA]]]")
 	copy(newData[len(oldData)/2:], insert)
 	copy(newData[len(oldData)/2+len(insert):], oldData[len(oldData)/2:])
 
-	t.Logf("原文 %d, 新文 %d, 插入: %d bytes", len(oldData), len(newData), len(insert))
+	t.Logf("old: %d, new: %d, inserted: %d bytes", len(oldData), len(newData), len(insert))
 
 	sent, saved := doDelta(t, client, "/tmp/shuttle_e2e_large.dat", newData)
 
 	t.Logf("━━━━━━━━━━━━━━━━━━━━━━")
-	t.Logf("  增量传输完成")
-	t.Logf("   新文件: %.1f KB", float64(len(newData))/1024)
-	t.Logf("   传输:   %.1f KB", float64(sent)/1024)
-	t.Logf("   节省:   %.1f KB (%.1f%%)", float64(saved)/1024, float64(saved)/float64(len(newData))*100)
+	t.Logf("  delta transfer complete")
+	t.Logf("   new file: %.1f KB", float64(len(newData))/1024)
+	t.Logf("   sent:   %.1f KB", float64(sent)/1024)
+	t.Logf("   saved:  %.1f KB (%.1f%%)", float64(saved)/1024, float64(saved)/float64(len(newData))*100)
 	t.Logf("━━━━━━━━━━━━━━━━━━━━━━")
 
 	cleanup(t, client, "/tmp/shuttle_e2e_large.dat")
@@ -93,7 +93,7 @@ func runDeltaTest(t *testing.T, client *ssh.Client, path, old, new string) {
 	s.Run(fmt.Sprintf("printf '%%s' '%s' > %s", old, path))
 	s.Close()
 	doDelta(t, client, path, []byte(new))
-	t.Log("小文件增量测试通过")
+	t.Log("small file delta test passed")
 	cleanup(t, client, path)
 }
 

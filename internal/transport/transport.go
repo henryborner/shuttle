@@ -13,7 +13,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// FileInfo describes a remote file
+// FileInfo describes a remote file.
+// FileInfo 描述远程文件。
 type FileInfo struct {
 	Path    string
 	Size    int64
@@ -21,7 +22,8 @@ type FileInfo struct {
 	IsDir   bool
 }
 
-// Transport is the transport layer interface
+// Transport is the transport layer interface.
+// Transport 传输层接口。
 type Transport interface {
 	Connect() error
 	Close() error
@@ -37,7 +39,8 @@ type Transport interface {
 	Exec(command string) (stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser, err error)
 }
 
-// SFTPConfig holds SFTP connection parameters
+// SFTPConfig holds SFTP connection parameters.
+// SFTPConfig SFTP 连接参数。
 type SFTPConfig struct {
 	Host    string
 	Port    int
@@ -46,7 +49,8 @@ type SFTPConfig struct {
 	Pass    string
 }
 
-// SFTPTransport implements Transport over SFTP
+// SFTPTransport implements Transport over SFTP.
+// SFTPTransport 基于 SFTP 的 Transport 实现。
 type SFTPTransport struct {
 	cfg    SFTPConfig
 	client *sftp.Client

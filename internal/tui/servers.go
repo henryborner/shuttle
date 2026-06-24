@@ -25,7 +25,8 @@ const (
 	testFail
 )
 
-// testResultMsg 异步测试结果消息
+// testResultMsg is the async test result message.
+// testResultMsg 异步测试结果消息。
 type testResultMsg struct {
 	ok       bool
 	msg      string
@@ -33,7 +34,8 @@ type testResultMsg struct {
 	hasAgent bool // shuttle binary found on remote
 }
 
-// deployResultMsg 异步部署结果消息
+// deployResultMsg is the async deploy result message.
+// deployResultMsg 异步部署结果消息。
 type deployResultMsg struct {
 	ok  bool
 	msg string
@@ -47,7 +49,7 @@ type serversModel struct {
 	adding  bool
 	editIdx int
 	// delete confirmation
-	deleteIdx int // -1 = no pending
+	deleteIdx int // -1 = no pending / -1 = 无挂起
 	updateIdx int // -1 = no pending
 	// form
 	formHost, formUser, formKey, formPortStr, formPass string

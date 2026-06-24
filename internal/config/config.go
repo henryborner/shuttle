@@ -1,4 +1,5 @@
-// 使用 YAML 格式，定义多组本地→远程映射
+// Package config uses YAML format to define local→remote mappings.
+// 使用 YAML 格式，定义多组本地→远程映射。
 package config
 
 import (
@@ -16,15 +17,16 @@ type Task struct {
 	Options Options `yaml:"options"`
 }
 
-// Options 同步选项
+// Options represents sync options for a task.
+// Options 同步选项。
 type Options struct {
-	Delete   bool     `yaml:"delete"`    // 删除目标多余文件
-	Exclude  []string `yaml:"exclude"`   // 排除文件模式
-	Compress bool     `yaml:"compress"`  // SSH 压缩
-	Checksum bool     `yaml:"checksum"`  // 用校验和判断差异
-	Watch    bool     `yaml:"watch"`     // 监听模式（预留）
-	Flat     bool     `yaml:"flat"`      // 直接映射内容不套源文件夹名
-	ShowDots bool     `yaml:"show_dots"` // 显示隐藏文件（以.开头的文件/目录），默认false=跳过
+	Delete   bool     `yaml:"delete"`    // delete extra files on target / 删除目标多余文件
+	Exclude  []string `yaml:"exclude"`   // exclude file patterns / 排除文件模式
+	Compress bool     `yaml:"compress"`  // SSH compression / SSH 压缩
+	Checksum bool     `yaml:"checksum"`  // use checksum to detect changes / 用校验和判断差异
+	Watch    bool     `yaml:"watch"`     // watch mode (reserved) / 监听模式（预留）
+	Flat     bool     `yaml:"flat"`      // map content directly, no source folder wrapping / 直接映射不套源文件夹
+	ShowDots bool     `yaml:"show_dots"` // show hidden files/dirs (starting with .) / 显示.开头的隐藏文件
 }
 
 type Server struct {
@@ -32,17 +34,18 @@ type Server struct {
 	Host    string   `yaml:"host"`
 	Port    int      `yaml:"port"`
 	User    string   `yaml:"user"`
-	KeyFile string   `yaml:"key_file"`          // SSH 私钥路径
-	Pass    string   `yaml:"password"`          // 或密码（不推荐）
-	Protect []string `yaml:"protect,omitempty"` // 保护模式：远端绝不覆盖/删除的文件路径
+	KeyFile string   `yaml:"key_file"`          // SSH private key path / SSH 私钥路径
+	Pass    string   `yaml:"password"`          // or password (not recommended) / 或密码（不推荐）
+	Protect []string `yaml:"protect,omitempty"` // protect patterns: remote files never overwritten/deleted / 保护模式：远端文件绝不覆盖/删除
 }
 
-// Config 顶层配置
+// Config is the top-level configuration.
+// Config 顶层配置。
 type Config struct {
 	Version  string   `yaml:"version"`
 	Language string   `yaml:"language,omitempty"` // "en" or "zh"
 	Checksum string   `yaml:"checksum,omitempty"` // default checksum algo
-	Workers  int      `yaml:"workers,omitempty"`  // delta并行数，0默认=4，1=串行
+	Workers  int      `yaml:"workers,omitempty"`  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
 	Servers  []Server `yaml:"servers"`
 	Tasks    []Task   `yaml:"tasks"`
 }
@@ -50,12 +53,12 @@ type Config struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, fmt.Errorf("read config failed / 读取配置失败: %w", err)
 	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+		return nil, fmt.Errorf("parse config failed / 解析配置失败: %w", err)
 	}
 
 	return &cfg, nil
@@ -67,7 +70,7 @@ func (c *Config) Save(path string) error {
 	}
 	data, err := yaml.Marshal(c)
 	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
+		return fmt.Errorf("serialize config failed / 序列化配置失败: %w", err)
 	}
 	return os.WriteFile(path, data, 0600)
 }
@@ -75,13 +78,13 @@ func (c *Config) Save(path string) error {
 func (c *Config) Validate() error {
 	for i, t := range c.Tasks {
 		if t.Name == "" {
-			return fmt.Errorf("任务 #%d 缺少名称", i+1)
+			return fmt.Errorf("task #%d missing name / 任务 #%d 缺少名称", i+1, i+1)
 		}
 		if t.Source == "" {
-			return fmt.Errorf("任务 '%s' 缺少 source", t.Name)
+			return fmt.Errorf("task '%s' missing source / 任务 '%s' 缺少 source", t.Name, t.Name)
 		}
 		if t.Target == "" {
-			return fmt.Errorf("任务 '%s' 缺少 target", t.Name)
+			return fmt.Errorf("task '%s' missing target / 任务 '%s' 缺少 target", t.Name, t.Name)
 		}
 	}
 	return nil
@@ -96,7 +99,8 @@ func (c *Config) GetTask(name string) *Task {
 	return nil
 }
 
-// GetServer 按名称查找服务器
+// GetServer looks up a server by name.
+// GetServer 按名称查找服务器。
 func (c *Config) GetServer(name string) *Server {
 	for i := range c.Servers {
 		if c.Servers[i].Name == name {

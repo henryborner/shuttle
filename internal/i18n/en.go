@@ -1,4 +1,5 @@
 // en.go — English translations
+// en.go — 英语翻译
 package i18n
 
 func init() {

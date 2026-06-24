@@ -68,7 +68,7 @@ func (em *explorerModel) Update(msg tea.Msg) (explorerModel, tea.Cmd) {
 			em.remoteBrowser.Close()
 			em.remoteBrowser = nil
 			em.mode = explorerMain
-			em.msg = "" // 退出浏览器时清消息
+			em.msg = "" // clear message when exiting explorer / 退出浏览器时清消息
 			em.msgType = ""
 		}
 		return *em, nil
