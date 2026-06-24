@@ -56,7 +56,7 @@ func main() {
 		Short: "Show version info",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("Shuttle v0.1.3.2 - rsync-style delta sync for Windows")
-			fmt.Println("Delta: Adler-32 + MD5/SHA256 | Transport: SFTP")
+			fmt.Println("Checksum: AVX2/SSE2/Go three-tier | Strong: MD5/xxh64/SHA256 | Transport: SFTP")
 		},
 	})
 

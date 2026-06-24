@@ -82,6 +82,7 @@ tasks:
 | `shuttle tui` | 启动 TUI |
 | `shuttle push [name]` | 执行同步 |
 | `shuttle push --dry-run` | 模拟运行（列出每文件操作 + 高危警告） |
+| `shuttle config` | 查看配置文件位置和状态 |
 | `shuttle init` | 生成配置文件 |
 | `shuttle version` | 版本信息 |
 

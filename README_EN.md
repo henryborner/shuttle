@@ -82,6 +82,7 @@ tasks:
 | `shuttle tui` | Launch TUI |
 | `shuttle push [name]` | Sync tasks |
 | `shuttle push --dry-run` | Preview with per-file status + risk warnings |
+| `shuttle config` | Show config file info and location |
 | `shuttle init` | Generate config file |
 | `shuttle version` | Show version |
 
