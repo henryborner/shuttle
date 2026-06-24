@@ -20,11 +20,13 @@ func init() {
 		Run:    runReceive,
 		Args:   cobra.ExactArgs(1),
 	}
+	receiveCmd.Flags().String("algo", "md5", "强校验和算法")
 	rootCmd.AddCommand(receiveCmd)
 }
 
 func runReceive(cmd *cobra.Command, args []string) {
 	filePath := args[0]
+	algo, _ := cmd.Flags().GetString("algo")
 
 	// 1. 打开本地旧文件（流式读签名，不全量入内存）
 	f, err := os.Open(filePath)

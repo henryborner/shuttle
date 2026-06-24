@@ -309,7 +309,8 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 		localDone <- localResult{data: d, close: closer}
 	}()
 
-	cmd := fmt.Sprintf("shuttle receive '%s'", strings.ReplaceAll(remotePath, "'", "'\\''"))
+	algo := delta.GetDefault()
+	cmd := fmt.Sprintf("shuttle receive --algo %s '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		lr := <-localDone
@@ -355,31 +356,36 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	}
 
 	// 本地匹配（文件数据+签名已就绪）
-	algo := delta.GetDefault()
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 	t0 := time.Now()
 	insts := eng.Search(lr.data)
 	dt := time.Since(t0)
-	if dt > 5*time.Second {
+	if dt > 5*time.Second || true {
 		f, _ := os.OpenFile("shuttle_perf.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if f != nil {
-			fmt.Fprintf(f, "[perf] Search %dMB took %v (block=%d, matches=%d, hits=%d, false=%d, literal=%d)\n",
+			fmt.Fprintf(f, "[perf:v2] Search %dMB took %v (block=%d, matches=%d, hits=%d, false=%d, literal=%d)\n",
 				len(lr.data)/(1024*1024), dt, sig.BlockSize, eng.Matches, eng.HashHits, eng.FalseAlarms, eng.LiteralBytes)
 			// dump first 5 signature blocks for comparison
-			for i := 0; i < 5 && i < len(sig.BlockSums); i++ {
+			n := len(sig.BlockSums)
+			if n > 5 {
+				n = 5
+			}
+			for i := 0; i < n; i++ {
 				bs := sig.BlockSums[i]
 				fmt.Fprintf(f, "  sig[%d] sum1=%08x offset=%d len=%d\n", i, bs.Sum1, bs.Offset, bs.Length)
 			}
 			// compute checksum of first few blocks from local file
-			rs := delta.NewRollingSum(lr.data[:sig.BlockSize])
-			for i := 0; i < 5 && i < len(sig.BlockSums); i++ {
-				off := int64(i) * int64(sig.BlockSize)
-				if off+int64(sig.BlockSize) > int64(len(lr.data)) {
-					break
+			if int(sig.BlockSize) <= len(lr.data) {
+				rs := delta.NewRollingSum(lr.data[:sig.BlockSize])
+				for i := 0; i < n; i++ {
+					off := int64(i) * int64(sig.BlockSize)
+					if off+int64(sig.BlockSize) > int64(len(lr.data)) {
+						break
+					}
+					rs.Reset(lr.data[off : off+int64(sig.BlockSize)])
+					fmt.Fprintf(f, "  local[%d] sum1=%08x\n", i, rs.Value())
 				}
-				rs.Reset(lr.data[off : off+int64(sig.BlockSize)])
-				fmt.Fprintf(f, "  local[%d] sum1=%08x\n", i, rs.Value())
 			}
 			f.Close()
 		}
