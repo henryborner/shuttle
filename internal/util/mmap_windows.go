@@ -47,8 +47,7 @@ func mmap(f *os.File, size int64) ([]byte, error) {
 	// Convert mapped view to Go slice. This is the standard Windows MMAP
 	// pattern; the address comes from MapViewOfFile, which returns valid
 	// committed memory. The unsafeptr analyzer flags this as a false positive.
-	ptr := unsafe.Pointer(addr)
-	data := unsafe.Slice((*byte)(ptr), int(size))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), int(size))
 	return data, nil
 }
 
