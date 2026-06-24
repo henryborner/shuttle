@@ -133,10 +133,10 @@ Our usage: `VPMADDUBSW Y15(ones=+1 signed), data(unsigned), dst` → correct uns
 
 ### 4.2 VPUNPCKLWD / VPUNPCKHWD lane behavior
 
-- `VPUNPCKLWD Y5(zero), Y0, Y3` — zero-extends all 16 int16 values to 8 int32, spanning both 128-bit lanes without VEXTRACTI128.
-- `VPUNPCKHWD Y5(zero), Y0, Y0` — same for the other 8 int16 values.
+- `VPUNPCKLWD Y5(zero), Y0, Y3` — zero-extends the even-indexed 8 of 16 int16 values to 8 int32, spanning both 128-bit lanes without VEXTRACTI128.
+- `VPUNPCKHWD Y5(zero), Y0, Y0` — zero-extends the odd-indexed 8 of 16 int16 values to 8 int32.
 
-Together they cover all 16 int16 results from VPMADDUBSW.
+Together (8+8=16) they cover all 16 int16 results from VPMADDUBSW.
 
 ### 4.3 XMM/YMM register aliasing
 
@@ -161,7 +161,7 @@ Together they cover all 16 int16 results from VPMADDUBSW.
 | current | Bottom-load eliminates Y9/Y10 | **23** | No CMPQ+JE, no VMOVDQA |
 | — | Fix VPBROADCASTD bug | 23 | init_s1 as scalar at exit |
 
-rsync: 20 always-executed. Remaining gap (23→20) comes from widening (8 VPUNPCK instructions). rsync avoids widening by keeping s1 in int16 with an overflow hack — impossible for shuttle because unsigned bytes + CHAR_OFFSET=31 would overflow int16 in one iteration.
+rsync: 20 (21 with `jnz`). Remaining gap comes from widening (8 VPUNPCK instructions). rsync avoids widening by keeping s1 in int16 with an overflow hack (`vpaddw` wrap → `vpsrld` extract → re-add). This preserves correctness only **modulo 2^16**, which is all rsync needs for its encoded output `(s1 & 0xFFFF) | (s2 << 16)`. Shuttle requires full 32-bit s1/s2 for `Roll()`, so the modulo hack isn't viable — values would lose precision across thousands of blocks.
 
 ---
 
