@@ -358,7 +358,12 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 	algo := delta.GetDefault()
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
+	t0 := time.Now()
 	insts := eng.Search(lr.data)
+	dt := time.Since(t0)
+	if dt > 5*time.Second {
+		fmt.Fprintf(os.Stderr, "[perf] Search 1GB took %v\n", dt)
+	}
 
 	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）
 	// 此时关闭 stdin 通知远端无需重建，避免无意义的磁盘写入
