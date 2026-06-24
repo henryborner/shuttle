@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/henryborner/shuttle/internal/config"
+	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/transport"
 	"github.com/henryborner/shuttle/internal/util"
 )
@@ -90,6 +91,11 @@ func doSync(taskName, cfgPath string, dryRun bool) {
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// 应用配置中的哈希算法
+	if cfg.Checksum != "" {
+		delta.SetDefault(cfg.Checksum)
 	}
 
 	var tasks []config.Task
