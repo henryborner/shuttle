@@ -8,7 +8,7 @@
 
 > 配置文件驱动 · 增量传输 · 8路 AVX2 MD5 · TUI 面板 · SFTP · 保护列表 · 中英双语
 
-**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 rsync 算法，移植 rsync AVX2 SIMD 校验和引擎，通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
+**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
 
 ```powershell
 shuttle                    # 双击即可启动 TUI
@@ -126,12 +126,14 @@ tasks:
 ```
 cmd/shuttle/          ← Cobra CLI 入口
 internal/
-├── delta/            ← 增量算法 + AVX2/SSE2 三级校验和引擎
 ├── transport/        ← SFTP 传输 + SyncEngine + Hook + mmap
 ├── config/           ← YAML 配置解析
 ├── i18n/             ← 中英双语
 ├── util/             ← SSH/mmap 工具
 └── tui/              ← Bubble Tea TUI 界面
+
+Delta 算法独立库：  github.com/henryborner/go-rsync
+（AVX2 8路 MD5 + 三级校验和引擎 + 块匹配 + 重组）
 ```
 
 ## 📄 许可证
