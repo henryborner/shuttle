@@ -7,15 +7,70 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/util"
 	"github.com/spf13/cobra"
 )
+
+// cacheDir returns the signature cache directory (~/.shuttle_cache/).
+// cacheDir 返回签名缓存目录。
+func cacheDir() string {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		home = "/tmp"
+	}
+	return filepath.Join(home, ".shuttle_cache")
+}
+
+// cacheLoad tries to load a cached signature for the given file.
+// Returns the wire-encoded signature bytes, or nil if no valid cache exists.
+// cacheLoad 尝试加载缓存签名，无有效缓存时返回 nil。
+func cacheLoad(filePath string, fi os.FileInfo, blockSize int32, algo string) ([]byte, error) {
+	cachePath := cachePathFor(filePath, fi, blockSize, algo)
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, nil // cache miss is not an error / 缓存未命中不算错误
+	}
+	return data, nil
+}
+
+// cacheSave saves a wire-encoded signature to the cache.
+// Uses atomic write (tmp + rename) for safety.
+// cacheSave 将签名原子写入缓存。
+func cacheSave(filePath string, fi os.FileInfo, blockSize int32, algo string, data []byte) {
+	cachePath := cachePathFor(filePath, fi, blockSize, algo)
+	dir := filepath.Dir(cachePath)
+	os.MkdirAll(dir, 0700)
+
+	tmp := cachePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return // silent fail / 静默失败
+	}
+	os.Rename(tmp, cachePath)
+}
+
+// cachePathFor builds the cache file path from file identity.
+// cachePathFor 根据文件身份构建缓存路径。
+func cachePathFor(filePath string, fi os.FileInfo, blockSize int32, algo string) string {
+	h := sha256.Sum256([]byte(filePath))
+	key := fmt.Sprintf("%s_%d_%d_%d_%s.sig",
+		hex.EncodeToString(h[:8]),
+		fi.ModTime().UnixNano(),
+		fi.Size(),
+		blockSize,
+		algo,
+	)
+	return filepath.Join(cacheDir(), key)
+}
 
 // isEOF checks whether the sender closed stdin early (file is identical / no update needed).
 // isEOF 判断是否发送端提前关闭 stdin（文件完全匹配/无需更新）。
@@ -55,15 +110,37 @@ func runReceive(cmd *cobra.Command, args []string) {
 	}
 	fileSize := fi.Size()
 
-	// 2. Stream-generate block signatures (don't load entire file).
-	// 2. 流式生成块签名（不加载全文件）。
+	// 2. Generate or load cached block signatures.
+	//    Hit: skip disk read entirely. Miss: read file + compute + cache.
+	// 2. 生成或加载缓存块签名。
+	//    命中：完全跳过读盘。未命中：读文件 + 计算 + 写缓存。
 	blockSize := delta.CalculateBlockSize(fileSize)
-	sig := delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
+	var sig *delta.Signature
+	var sigWire []byte
+
+	cached, _ := cacheLoad(filePath, fi, blockSize, algo)
+	if cached != nil {
+		s, err := delta.WireDecodeSignature(bytes.NewReader(cached))
+		if err == nil {
+			sig = s
+			sigWire = cached
+		}
+	}
+	if sig == nil {
+		sig = delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
+		var buf bytes.Buffer
+		if err := delta.WireEncodeSignature(&buf, sig); err != nil {
+			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: encode signature failed / 签名编码失败: %v\n", err)
+			os.Exit(1)
+		}
+		sigWire = buf.Bytes()
+		cacheSave(filePath, fi, blockSize, algo, sigWire)
+	}
 
 	// 3. Send signature to stdout.
 	// 3. 发送签名到 stdout。
-	if err := delta.WireEncodeSignature(os.Stdout, sig); err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 发送签名失败: %v\n", err)
+	if _, err := os.Stdout.Write(sigWire); err != nil {
+		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: send signature failed / 发送签名失败: %v\n", err)
 		os.Exit(1)
 	}
 
