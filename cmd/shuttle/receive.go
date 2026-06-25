@@ -87,12 +87,14 @@ func init() {
 		Args:   cobra.ExactArgs(1),
 	}
 	receiveCmd.Flags().String("algo", "md5", "strong checksum algorithm / 强校验和算法")
+	receiveCmd.Flags().Bool("no-cache", false, "skip signature cache (for checksum mode) / 跳过签名缓存（校验和模式用）")
 	rootCmd.AddCommand(receiveCmd)
 }
 
 func runReceive(cmd *cobra.Command, args []string) {
 	filePath := args[0]
 	algo, _ := cmd.Flags().GetString("algo")
+	noCache, _ := cmd.Flags().GetBool("no-cache")
 
 	// 1. Open local old file (stream read signature, don't load entire file into memory).
 	// 1. 打开本地旧文件（流式读签名，不全量入内存）。
@@ -119,7 +121,7 @@ func runReceive(cmd *cobra.Command, args []string) {
 	var sigWire []byte
 
 	cached, _ := cacheLoad(filePath, fi, blockSize, algo)
-	if cached != nil {
+	if cached != nil && !noCache {
 		s, err := delta.WireDecodeSignature(bytes.NewReader(cached))
 		if err == nil {
 			sig = s

@@ -158,11 +158,12 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			err   error
 		}, len(deltaJobs))
 
+		checksum := opts.Checksum
 		for _, dj := range deltaJobs {
 			go func(job deltaJob) {
 				sem <- struct{}{}
 				e.hook.OnFileStart(job.relPath, job.lf.Size)
-				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath)
+				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
 				<-sem
 				resultCh <- struct {
 					job   deltaJob
@@ -307,7 +308,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
-func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sentBytes, savedBytes int64, err error) {
+func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	// read local new file (I/O) and remote signature (network) in parallel
 	// 并行读取本地新文件（I/O）和远端签名（网络）
 	type localResult struct {
@@ -330,6 +331,9 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string) (sen
 
 	algo := delta.GetDefault()
 	cmd := fmt.Sprintf("shuttle receive --algo %s '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	if checksum {
+		cmd = fmt.Sprintf("shuttle receive --algo %s --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	}
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		lr := <-localDone
