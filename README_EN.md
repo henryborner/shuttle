@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
 [![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
 
-> Config-driven · Delta transfer · AVX2/SSE2 engine · TUI · SFTP · Protect list · Bilingual
+> Config-driven · Delta transfer · 8-way AVX2 MD5 · TUI · SFTP · Protect list · Bilingual
 
 **Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a hand-optimized AVX2/SSE2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
 
@@ -19,7 +19,8 @@ shuttle tui                # launch TUI from terminal
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 52 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
+- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written YMM assembly, 2.3 GB/s signature generation (powered by go-rsync)
+- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 70 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
 - **🔄 Delta transfer** — rsync rolling checksum + hash matching + strong verification, zero transfer for identical files
 - **🔗 Auto Algo Sync** — \--algo flag keeps remote checksum algorithm in sync, prevents mismatch slowdown
 - **🛡 Per-server protect** — Protect patterns per server; remote files never overwritten or deleted
