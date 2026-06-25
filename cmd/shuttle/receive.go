@@ -120,8 +120,11 @@ func runReceive(cmd *cobra.Command, args []string) {
 	var sig *delta.Signature
 	var sigWire []byte
 
-	cached, _ := cacheLoad(filePath, fi, blockSize, algo)
-	if cached != nil && !noCache {
+	var cached []byte
+	if !noCache {
+		cached, _ = cacheLoad(filePath, fi, blockSize, algo)
+	}
+	if cached != nil {
 		s, err := delta.WireDecodeSignature(bytes.NewReader(cached))
 		if err == nil {
 			sig = s
@@ -136,7 +139,9 @@ func runReceive(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		sigWire = buf.Bytes()
-		cacheSave(filePath, fi, blockSize, algo, sigWire)
+		if !noCache {
+			cacheSave(filePath, fi, blockSize, algo, sigWire)
+		}
 	}
 
 	// 3. Send signature to stdout.
