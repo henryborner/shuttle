@@ -4,15 +4,16 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.3.3-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
 
 > Config-driven · Delta transfer · AVX2/SSE2 engine · TUI · SFTP · Protect list · Bilingual
 
 **Shuttle** is a Windows-native incremental file sync tool. Powered by the rsync algorithm with a hand-optimized AVX2/SSE2 SIMD checksum engine, `syncd.yaml` defines multiple local→remote mappings — one command to push.
 
 ```powershell
-shuttle push web          # sync a task
-shuttle tui               # interactive terminal UI
+shuttle                    # double-click to launch TUI
+shuttle push web           # sync a task
+shuttle tui                # launch TUI from terminal
 ```
 
 ## ✨ Features
@@ -45,9 +46,12 @@ go build -o shuttle.exe ./cmd/shuttle/
 
 ## 🚀 Quick Start
 
+Double-click `shuttle.exe` to enter the TUI. Or from terminal:
+
 ```powershell
+.\shuttle.exe                   # double-click launches TUI
 .\shuttle.exe init              # Generate config template
-.\shuttle.exe tui               # Launch TUI
+.\shuttle.exe tui               # Launch TUI from terminal
 .\shuttle.exe list              # List tasks & servers
 .\shuttle.exe config            # Full config summary
 .\shuttle.exe test myserver     # Test SSH connection
@@ -55,7 +59,7 @@ go build -o shuttle.exe ./cmd/shuttle/
 .\shuttle.exe push -v --dry-run # Verbose preview
 ```
 
-> No manual config needed: run `shuttle tui` and you're good to go.
+> No manual config needed: just double-click `shuttle.exe` to enter the TUI.
 
 ## 📁 Config
 
@@ -82,7 +86,8 @@ tasks:
 
 | Command | Description |
 |---------|-------------|
-| `shuttle tui` | Launch TUI |
+| `shuttle` (double-click) | Launch TUI directly |
+| `shuttle tui` | Launch TUI from terminal |
 | `shuttle push [name]` | Sync tasks, supports `-v` `-w N` `--algo` `--dry-run` |
 | `shuttle list` | List all tasks and servers |
 | `shuttle config` | Full config summary (servers, tasks, algo) |

@@ -4,15 +4,16 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.3.3-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
 
 > 配置文件驱动 · 增量传输 · rsync AVX2 校验和 · TUI 面板 · SFTP · 保护列表 · 中英双语
 
 **Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 rsync 算法，移植 rsync AVX2 SIMD 校验和引擎，通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
 
 ```powershell
-shuttle push web          # 一键推送
-shuttle tui               # 交互式终端面板
+shuttle                    # 双击即可启动 TUI
+shuttle push web           # 一键推送
+shuttle tui                # 命令行启动 TUI
 ```
 
 ## ✨ 特性
@@ -45,9 +46,12 @@ go build -o shuttle.exe ./cmd/shuttle/
 
 ## 🚀 快速开始
 
+双击 `shuttle.exe` 即可进入 TUI。或命令行：
+
 ```powershell
+.\shuttle.exe                   # 双击自动进 TUI
 .\shuttle.exe init              # 生成配置模板
-.\shuttle.exe tui               # 启动 TUI
+.\shuttle.exe tui               # 命令行启动 TUI
 .\shuttle.exe list              # 列出所有任务/服务器
 .\shuttle.exe config            # 查看完整配置摘要
 .\shuttle.exe test myserver     # 测试 SSH 连接
@@ -55,7 +59,7 @@ go build -o shuttle.exe ./cmd/shuttle/
 .\shuttle.exe push -v --dry-run # 详细预览
 ```
 
-> 无需手动写配置：直接 `shuttle tui` 进入界面即可。
+> 无需手动写配置：直接双击 `shuttle.exe` 进入 TUI 即可。
 
 ## 📁 配置文件
 
@@ -82,7 +86,8 @@ tasks:
 
 | 命令 | 说明 |
 |------|------|
-| `shuttle tui` | 启动 TUI |
+| `shuttle` （双击） | 无参数直接启动 TUI |
+| `shuttle tui` | 命令行启动 TUI |
 | `shuttle push [name]` | 执行同步，支持 `-v` `-w N` `--algo` `--dry-run` |
 | `shuttle list` | 列出所有任务和服务器 |
 | `shuttle config` | 完整配置摘要（服务器、任务、算法） |
