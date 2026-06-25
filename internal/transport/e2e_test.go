@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/henryborner/shuttle/internal/delta"
+	delta "github.com/henryborner/go-rsync"
 	"golang.org/x/crypto/ssh"
 )
 

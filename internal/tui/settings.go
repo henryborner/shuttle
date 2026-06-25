@@ -3,8 +3,8 @@ package tui
 import (
 	"fmt"
 
+	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/config"
-	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/i18n"
 
 	tea "github.com/charmbracelet/bubbletea"

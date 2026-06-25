@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/config"
-	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/i18n"
 	"github.com/henryborner/shuttle/internal/transport"
 	"github.com/henryborner/shuttle/internal/util"

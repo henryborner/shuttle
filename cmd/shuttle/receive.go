@@ -16,7 +16,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/henryborner/shuttle/internal/delta"
+	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/util"
 	"github.com/spf13/cobra"
 )

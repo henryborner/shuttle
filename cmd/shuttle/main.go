@@ -10,8 +10,8 @@ import (
 
 	"strings"
 
+	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/config"
-	"github.com/henryborner/shuttle/internal/delta"
 	"github.com/henryborner/shuttle/internal/tui"
 	"github.com/spf13/cobra"
 )
