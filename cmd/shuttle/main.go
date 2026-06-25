@@ -35,15 +35,10 @@ Config-file driven: define local→remote mappings in syncd.yaml, then push.`,
 )
 
 func main() {
-	// intercept double-click: show help and wait so the window doesn't vanish
-	// 拦截双击启动：显示帮助并等待，窗口不会闪退
+	// Double-click launch: start TUI directly (no terminal needed).
+	// 双击启动：直接进入 TUI 界面。
 	if len(os.Args) == 1 {
-		rootCmd.Help()
-		fmt.Println()
-		fmt.Println("This is a command-line tool — run from a terminal (cmd / PowerShell).")
-		fmt.Println("这是一个命令行工具，请在终端里运行（cmd / PowerShell）。")
-		fmt.Print("Press Enter to exit / 按回车退出...")
-		fmt.Scanln()
+		runTUI(nil, nil)
 		return
 	}
 
