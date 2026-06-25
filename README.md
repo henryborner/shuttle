@@ -105,6 +105,8 @@ tasks:
 | `--algo name` | 覆盖校验和算法（md5 / xxh64 / sha256） |
 | `-c, --config path` | 指定配置文件（默认 syncd.yaml） |
 
+> **签名缓存**：服务器端自动缓存文件签名到 `~/.shuttle_cache/`，文件未变时跳过读盘。checksum 模式下自动禁用缓存（每次读盘验证）。手动强制跳过：`shuttle receive --no-cache <path>`。
+
 ## 🎮 快捷键
 
 | 范围 | 按键 | 功能 |

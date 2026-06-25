@@ -105,6 +105,8 @@ tasks:
 | `--algo name` | Override checksum algorithm (md5 / xxh64 / sha256) |
 | `-c, --config path` | Config file path (default syncd.yaml) |
 
+> **Signature cache**: Server auto-caches signatures in `~/.shuttle_cache/`, skipping disk reads when files are unchanged. Checksum mode disables the cache automatically (always reads from disk). Force skip: `shuttle receive --no-cache <path>`.
+
 ## 🎮 Shortcuts
 
 | Context | Key | Action |
