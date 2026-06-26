@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.4.1-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.4.2-green)]()
 
 > Config-driven · Delta transfer · 8/16-way AVX2/AVX-512 MD5 · TUI · SFTP · Protect list · Bilingual
 
@@ -19,8 +19,8 @@ shuttle tui                # launch TUI from terminal
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **🧬 8/16-way AVX2/AVX-512 MD5** — 8/16 blocks hashed in parallel via hand-written YMM/ZMM assembly, 2.9 GB/s signature generation (powered by go-rsync)
-- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 70 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
+- **🧬 8/16-way AVX2/AVX-512 MD5** — 8/16 blocks hashed in parallel via hand-written YMM assembly + VPGATHERDD gather load, 3.7 GB/s signature generation (powered by go-rsync)
+- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 43 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
 - **🔄 Delta transfer** — rsync rolling checksum + hash matching + strong verification, zero transfer for identical files
 - **🔗 Auto Algo Sync** — \--algo flag keeps remote checksum algorithm in sync, prevents mismatch slowdown
 - **🛡 Per-server protect** — Protect patterns per server; remote files never overwritten or deleted
