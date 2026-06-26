@@ -4,29 +4,25 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.4.2-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.4.3-green)]()
 
-> Config-driven · Delta transfer · 8/16-way AVX2/AVX-512 MD5 · TUI · SFTP · Protect list · Bilingual
+> Config-driven · Delta transfer · TUI · SFTP · Bilingual
 
-**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration), `syncd.yaml` defines multiple local→remote mappings — one command to push.
+**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration). Define mappings in `syncd.yaml` — one command to push.
 
 ```powershell
 shuttle                    # double-click to launch TUI
 shuttle push web           # sync a task
-shuttle tui                # launch TUI from terminal
 ```
 
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **🧬 8/16-way AVX2/AVX-512 MD5** — 8/16 blocks hashed in parallel via hand-written YMM assembly + VPGATHERDD gather load, 3.7 GB/s signature generation (powered by go-rsync)
-- **⚡ Three-tier Checksum** — AVX2 (64B/iter, 43 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
-- **🔄 Delta transfer** — rsync rolling checksum + hash matching + strong verification, zero transfer for identical files
-- **🔗 Auto Algo Sync** — \--algo flag keeps remote checksum algorithm in sync, prevents mismatch slowdown
-- **🛡 Per-server protect** — Protect patterns per server; remote files never overwritten or deleted
-- **🖥 TUI** — Dashboard, mappings, servers, explorer, settings, protect editor
+- **🔄 Delta transfer** — rsync algorithm, zero transfer for identical files
+- **🛡 Per-server protect** — Remote files never overwritten or deleted
+- **🖥 TUI** — Dashboard, mappings, servers, explorer, settings
 - **🌐 SFTP/SSH** — Local → remote with auto key detection
-- **💾 Large file optimized** — mmap memory mapping, 1GB files compared in seconds
+- **💾 Large file optimized** — mmap, 1GB files compared in seconds
 - **🌍 Bilingual** — EN/ZH toggle in settings
 - **📦 Single binary** — `shuttle.exe`, zero deps
 
@@ -35,32 +31,20 @@ shuttle tui                # launch TUI from terminal
 Download from [Releases](https://github.com/henryborner/shuttle/releases):
 
 - **`shuttle.exe`** — Windows main program
-- **`shuttle_linux`** — Linux remote agent (deploy via TUI Servers page)
-
-Or build from source:
-
-```powershell
-git clone https://github.com/henryborner/shuttle.git
-cd shuttle
-go build -o shuttle.exe ./cmd/shuttle/
-```
+- **`shuttle_linux`** — Linux remote agent (one-click deploy from TUI)
 
 ## 🚀 Quick Start
 
-Double-click `shuttle.exe` to enter the TUI. Or from terminal:
-
 ```powershell
-.\shuttle.exe                   # double-click launches TUI
-.\shuttle.exe init              # Generate config template
-.\shuttle.exe tui               # Launch TUI from terminal
-.\shuttle.exe list              # List tasks & servers
-.\shuttle.exe config            # Full config summary
-.\shuttle.exe test myserver     # Test SSH connection
-.\shuttle.exe push web          # Sync
-.\shuttle.exe push -v --dry-run # Verbose preview
+.\shuttle.exe                   # double-click for TUI
+.\shuttle.exe tui               # TUI from terminal
+.\shuttle.exe list              # list tasks & servers
+.\shuttle.exe test myserver     # test SSH connection
+.\shuttle.exe push web          # sync
+.\shuttle.exe push --dry-run    # preview changes
 ```
 
-> No manual config needed: just double-click `shuttle.exe` to enter the TUI.
+> No manual config needed: just double-click `shuttle.exe`.
 
 ## 📁 Config
 
@@ -87,54 +71,32 @@ tasks:
 
 | Command | Description |
 |---------|-------------|
-| `shuttle` (double-click) | Launch TUI directly |
-| `shuttle tui` | Launch TUI from terminal |
-| `shuttle push [name]` | Sync tasks, supports `-v` `-w N` `--algo` `--dry-run` |
+| `shuttle` | Double-click for TUI |
+| `shuttle push [name]` | Sync tasks |
 | `shuttle list` | List all tasks and servers |
-| `shuttle config` | Full config summary (servers, tasks, algo) |
+| `shuttle config` | Full config summary |
 | `shuttle test <server>` | Test SSH connection |
-| `shuttle init` | Generate config file |
-| `shuttle version` | Version + Go/OS/available algos |
+| `shuttle init` | Generate config template |
 
 ### push Flags
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Preview only, no changes |
-| `-v, --verbose` | Verbose output (bytes sent + error details) |
-| `-w, --workers N` | Parallel workers (default 4, 0=serial) |
-| `--algo name` | Override checksum algorithm (md5 / xxh64 / sha256) |
-| `-c, --config path` | Config file path (default syncd.yaml) |
-
-> **Signature cache**: Server auto-caches signatures in `~/.shuttle_cache/`, skipping disk reads when files are unchanged. Checksum mode disables the cache automatically (always reads from disk). Force skip: `shuttle receive --no-cache <path>`.
+| `-v` | Verbose output |
+| `-w N` | Parallel workers (default 4) |
+| `--algo md5\|xxh64\|sha256` | Checksum algorithm |
 
 ## 🎮 Shortcuts
 
-| Context | Key | Action |
-|---------|-----|--------|
-| Dashboard | `Enter` | Sync selected |
-| Mappings | `A` `E` `D` | Add/Edit/Delete |
-| Mappings | `R` | Sync now |
-| Servers | `Ctrl+T` | Test connection |
-| Servers | `P` | Protect list |
-| Protect list | `Tab` | Remote file browser |
-| Explorer | `Tab` | Browse local |
-| Explorer | `Ctrl+B` | Browse remote |
-
-## 🔧 Architecture
-
-```
-cmd/shuttle/          ← Cobra CLI
-internal/
-├── transport/        ← SFTP + SyncEngine + Hook + mmap
-├── config/           ← YAML parsing
-├── i18n/             ← EN/ZH translations
-├── util/             ← SSH/mmap utilities
-└── tui/              ← Bubble Tea TUI
-
-Delta algorithm (standalone):  github.com/henryborner/go-rsync
-(AVX2/AVX-512 8/16-way MD5 + three-tier checksum + block matching + reconstruction)
-```
+| Key | Action |
+|-----|--------|
+| `Enter` | Sync selected |
+| `A` `E` `D` | Add/Edit/Delete mapping |
+| `R` | Sync current mapping |
+| `Ctrl+T` | Test server connection |
+| `P` | Edit protect list |
+| `Tab` | Toggle file browser |
 
 ## 📄 License
 
