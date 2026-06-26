@@ -8,7 +8,7 @@
 
 > Config-driven · Delta transfer · TUI · SFTP · Bilingual
 
-**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration). Define mappings in `syncd.yaml` — one command to push.
+**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration). Define mappings in `syncd.yaml` — one command to push. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
 ```powershell
 shuttle                    # double-click to launch TUI
@@ -18,11 +18,11 @@ shuttle push web           # sync a task
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **🔄 Delta transfer** — rsync algorithm, zero transfer for identical files
+- **🔄 Delta transfer** — rsync algorithm, signature-only transfer for identical files (few KB)
 - **🛡 Per-server protect** — Remote files never overwritten or deleted
 - **🖥 TUI** — Dashboard, mappings, servers, explorer, settings
 - **🌐 SFTP/SSH** — Local → remote with auto key detection
-- **💾 Large file optimized** — mmap, 1GB files compared in seconds
+- **💾 Large file optimized** — mmap, 1GB files compared in seconds (SSD)
 - **🌍 Bilingual** — EN/ZH toggle in settings
 - **📦 Single binary** — `shuttle.exe`, zero deps
 

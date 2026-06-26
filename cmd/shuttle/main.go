@@ -28,7 +28,7 @@ var (
 		Use:   "shuttle",
 		Short: "Shuttle — rsync-style delta sync for Windows",
 		Long: `Shuttle is a Windows-native file sync tool.
-Powered by a hand-optimized AVX2/SSE2 checksum engine and rsync delta algorithm.
+Powered by a hand-optimized AVX2/SSE2/Go 3-tier checksum engine and rsync delta algorithm.
 Config-file driven: define local→remote mappings in syncd.yaml, then push.`,
 		Version: versionStr,
 	}

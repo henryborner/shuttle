@@ -1,6 +1,6 @@
 [English](README_EN.md) | 简体中文
 
-# 🚀 Shuttle — Windows 原生 rsync 替代品
+# 🚀 Shuttle — 基于 rsync 增量算法的 Windows 原生文件同步工具
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
@@ -8,7 +8,7 @@
 
 > 配置文件驱动 · 增量传输 · TUI 面板 · SFTP · 中英双语
 
-**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2/AVX-512 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
+**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2/AVX-512 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。与标准 rsync**不兼容**（使用 CHAR_OFFSET=31 更强的校验，自有线协议）。
 
 ```powershell
 shuttle                    # 双击启动 TUI
@@ -18,11 +18,11 @@ shuttle push web           # 一键同步
 ## ✨ 特性
 
 - **📋 配置文件驱动** — `syncd.yaml` 定义多组映射
-- **🔄 增量传输** — rsync 算法，相同文件零传输
+- **🔄 增量传输** — rsync 算法，相同文件仅传输校验签名（几 KB），无数据块传输
 - **🛡 服务器保护** — 按服务器配置保护模式，远端文件永不覆盖/删除
 - **🖥 TUI 界面** — 仪表盘、映射管理、服务器管理、文件浏览器、设置
 - **🌐 SFTP/SSH** — 本地 → 远程，自动检测密钥
-- **💾 大文件友好** — mmap 内存映射，1GB 秒级比对
+- **💾 大文件友好** — mmap 内存映射，SSD 条件下 1GB 文件秒级比对
 - **🌍 中英双语** — 设置页一键切换
 - **📦 单文件** — 一个 `shuttle.exe` 零依赖
 
