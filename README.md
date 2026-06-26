@@ -6,9 +6,9 @@
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
 [![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
 
-> 配置文件驱动 · 增量传输 · 8路 AVX2 MD5 · TUI 面板 · SFTP · 保护列表 · 中英双语
+> 配置文件驱动 · 增量传输 · 8/16路 AVX2/AVX-512 MD5 · TUI 面板 · SFTP · 保护列表 · 中英双语
 
-**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
+**Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2/AVX-512 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。
 
 ```powershell
 shuttle                    # 双击即可启动 TUI
@@ -19,7 +19,7 @@ shuttle tui                # 命令行启动 TUI
 ## ✨ 特性
 
 - **📋 配置文件驱动** — `syncd.yaml` 定义多组映射，一键同步
-- **🧬 8路 AVX2 MD5** — 8 个块并行哈希，手写 YMM 汇编，签名生成 2.3 GB/s（go-rsync 库提供）
+- **🧬 8/16路 AVX2/AVX-512 MD5** — 8/16 个块并行哈希，手写 YMM/ZMM 汇编，签名生成 2.9 GB/s（go-rsync 库提供）
 - **⚡ 三级校验和引擎** — AVX2 (64B/轮, 70 GB/s) / SSE2 (32B/轮, 26 GB/s) / Go 纯标量，自适应调度
 - **🔄 增量传输** — rsync 算法滚动校验和 + 哈希块匹配 + 强校验验证，相同文件零传输
 - **🔗 算法一致** — \--algo 参数自动同步远端，消除算法不匹配导致的性能退化
@@ -133,7 +133,7 @@ internal/
 └── tui/              ← Bubble Tea TUI 界面
 
 Delta 算法独立库：  github.com/henryborner/go-rsync
-（AVX2 8路 MD5 + 三级校验和引擎 + 块匹配 + 重组）
+（AVX2/AVX-512 8/16路 MD5 + 三级校验和引擎 + 块匹配 + 重组）
 ```
 
 ## 📄 许可证

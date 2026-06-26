@@ -6,9 +6,9 @@
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
 [![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
 
-> Config-driven · Delta transfer · 8-way AVX2 MD5 · TUI · SFTP · Protect list · Bilingual
+> Config-driven · Delta transfer · 8/16-way AVX2/AVX-512 MD5 · TUI · SFTP · Protect list · Bilingual
 
-**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2 SIMD acceleration), `syncd.yaml` defines multiple local→remote mappings — one command to push.
+**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration), `syncd.yaml` defines multiple local→remote mappings — one command to push.
 
 ```powershell
 shuttle                    # double-click to launch TUI
@@ -19,7 +19,7 @@ shuttle tui                # launch TUI from terminal
 ## ✨ Features
 
 - **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **🧬 8-way AVX2 MD5** — 8 blocks hashed in parallel via hand-written YMM assembly, 2.3 GB/s signature generation (powered by go-rsync)
+- **🧬 8/16-way AVX2/AVX-512 MD5** — 8/16 blocks hashed in parallel via hand-written YMM/ZMM assembly, 2.9 GB/s signature generation (powered by go-rsync)
 - **⚡ Three-tier Checksum** — AVX2 (64B/iter, 70 GB/s) / SSE2 (32B/iter, 26 GB/s) / Go scalar, auto-dispatch
 - **🔄 Delta transfer** — rsync rolling checksum + hash matching + strong verification, zero transfer for identical files
 - **🔗 Auto Algo Sync** — \--algo flag keeps remote checksum algorithm in sync, prevents mismatch slowdown
@@ -133,7 +133,7 @@ internal/
 └── tui/              ← Bubble Tea TUI
 
 Delta algorithm (standalone):  github.com/henryborner/go-rsync
-(AVX2 8-way MD5 + three-tier checksum + block matching + reconstruction)
+(AVX2/AVX-512 8/16-way MD5 + three-tier checksum + block matching + reconstruction)
 ```
 
 ## 📄 License
