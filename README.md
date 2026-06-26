@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.4.3-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.4.4-green)]()
 
 > 配置文件驱动 · 增量传输 · TUI 面板 · SFTP · 中英双语
 
