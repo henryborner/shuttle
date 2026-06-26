@@ -23,7 +23,7 @@ var (
 	workers  int
 	algoName string
 
-	versionStr = "0.1.3.6"
+	versionStr = "0.1.4.1"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
 		Short: "Shuttle — rsync-style delta sync for Windows",
