@@ -38,3 +38,5 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )
+
+replace github.com/henryborner/go-rsync => ../go-rsync
