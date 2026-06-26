@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.3.5-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.3.6-green)]()
 
 > Config-driven · Delta transfer · 8/16-way AVX2/AVX-512 MD5 · TUI · SFTP · Protect list · Bilingual
 
