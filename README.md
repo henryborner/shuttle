@@ -10,6 +10,8 @@
 
 **Shuttle** 是一个 Windows 原生的增量文件同步工具。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库（独立 rsync delta 算法 + AVX2/AVX-512 SIMD 加速），通过 `syncd.yaml` 定义多组本地→远程映射，一键推送。与标准 rsync**不兼容**（使用 CHAR_OFFSET=31 更强的校验，自有线协议）。
 
+> ⚡ **性能亮点**：SIMD 加速的 MD5 哈希速度已追平标准库 xxh64——兼顾加密级安全性与极致性能。
+
 ```powershell
 shuttle                    # 双击启动 TUI
 shuttle push web           # 一键同步

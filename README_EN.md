@@ -10,6 +10,8 @@
 
 **Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration). Define mappings in `syncd.yaml` — one command to push. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
+> ⚡ **Performance**: SIMD-accelerated MD5 now matches stdlib xxh64 speed — cryptographic-grade hashing at non-crypto performance.
+
 ```powershell
 shuttle                    # double-click to launch TUI
 shuttle push web           # sync a task
