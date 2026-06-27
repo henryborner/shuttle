@@ -4,7 +4,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.4.6-green)]()
+[![Version](https://img.shields.io/badge/version-0.1.4.7-green)]()
 
 > Config-driven · Delta transfer · TUI · SFTP · Bilingual
 
