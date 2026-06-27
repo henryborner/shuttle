@@ -214,6 +214,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Handle startSyncMsg from any sub-model
 	if sm, ok := msg.(startSyncMsg); ok {
+		if m.syncing {
+			return m, nil
+		}
 		if sm.task.Options.Delete {
 			m.deleteConfirm = &deleteConfirmState{
 				task: sm.task, stage: confirmLevel1,
@@ -500,6 +503,9 @@ func truncatePath(s string, n int) string {
 }
 
 func (m *Model) startSync(task config.Task) {
+	if m.syncing {
+		return
+	}
 	m.syncing = true
 	m.syncErr = ""
 	m.sp = syncProgress{taskName: task.Name}
