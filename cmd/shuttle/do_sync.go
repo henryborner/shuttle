@@ -195,7 +195,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 			fmt.Printf(" deleted:%d", stats.DeletedFiles)
 		}
 		if stats.DeltaFiles > 0 {
-			fmt.Printf(" Δ:%d", stats.DeltaFiles)
+			fmt.Printf(" delta:%d", stats.DeltaFiles)
 		}
 		fmt.Printf(" | %s", util.FormatBytes(stats.TotalBytes))
 		if stats.DeltaSaved > 0 {

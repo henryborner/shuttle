@@ -196,9 +196,9 @@ func runReceive(cmd *cobra.Command, args []string) {
 	}
 	recon := delta.NewReconstructor(oldData, blockSize, algo, blockLens)
 
-	// Streaming pipeline: stdin → decode instructions one by one → write output file.
-	// 流式管道：stdin → 逐条解码指令 → 逐条写入输出文件。
-	err = delta.DecodeInstructionsStream(os.Stdin, func(inst delta.MatchResult) error {
+	// Streaming pipeline: stdin → decode instructions → write output file.
+	// Supports batched streaming: sender may send multiple count-prefixed batches.
+	err = delta.DecodeInstructionsStreamAll(os.Stdin, func(inst delta.MatchResult) error {
 		return recon.WriteInstruction(out, inst)
 	})
 	if err != nil {

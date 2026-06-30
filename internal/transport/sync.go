@@ -10,7 +10,6 @@ import (
 	"time"
 
 	delta "github.com/henryborner/go-rsync"
-	"github.com/henryborner/shuttle/internal/util"
 )
 
 type SyncOptions struct {
@@ -309,26 +308,6 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
-	// read local new file (I/O) and remote signature (network) in parallel
-	// 并行读取本地新文件（I/O）和远端签名（网络）
-	type localResult struct {
-		data  []byte
-		close func() error // mmap release function / mmap 释放函数
-		err   error
-	}
-	localDone := make(chan localResult, 1)
-	go func() {
-		d, closer, e := util.MmapReadOnly(info.Path)
-		if e != nil {
-			// mmap failed → fallback to os.ReadFile (non-mmap system or permission issue)
-			// mmap 失败 → 回退 os.ReadFile（非 mmap 系统或权限不足）
-			raw, re := os.ReadFile(info.Path)
-			localDone <- localResult{data: raw, err: re}
-			return
-		}
-		localDone <- localResult{data: d, close: closer}
-	}()
-
 	algo := delta.GetDefault()
 	cmd := fmt.Sprintf("shuttle receive --algo %s '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	if checksum {
@@ -336,18 +315,12 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	}
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
-		lr := <-localDone
-		if lr.close != nil {
-			lr.close()
-		}
-		// delta unavailable, fallback to full upload (remote may not have shuttle agent).
-		// delta 不可用，回退全量上传（远端可能未部署 shuttle agent）。
+		// delta unavailable, fallback to full upload.
 		_ = e.uploadFile(info, remotePath)
 		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
 	}
 
 	// read stderr concurrently
-	// 并发读 stderr
 	var errBuf strings.Builder
 	stderrDone := make(chan struct{})
 	go func() {
@@ -360,58 +333,74 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {
 		stdin.Close()
-		lr := <-localDone
-		if lr.close != nil {
-			lr.close()
-		}
 		<-stderrDone
 		_ = e.uploadFile(info, remotePath)
 		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
 	}
 
-	// wait for local file to finish reading
-	// 等待本地文件读完
-	lr := <-localDone
-	if lr.err != nil {
+	// Open local file for streaming (no mmap, no full read into memory).
+	f, err := os.Open(info.Path)
+	if err != nil {
 		stdin.Close()
 		<-stderrDone
-		return 0, 0, fmt.Errorf("read local: %w", lr.err)
+		return 0, 0, fmt.Errorf("open local: %w", err)
 	}
-	if lr.close != nil {
-		defer lr.close()
-	}
+	defer f.Close()
 
-	// local matching (file data + signature both ready)
-	// 本地匹配（文件数据+签名已就绪）
+	// Streaming match + streaming send: instructions are batched and
+	// written to stdin as they are discovered.  No full instruction list
+	// is held in memory.
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
-	insts := eng.Search(lr.data)
 
-	// Detect perfect match: only trailing partial block remains (normal for identical files).
-	// Close stdin to signal remote: no reconstruction needed, avoid pointless disk writes.
-	// 检测完全匹配：只有尾部不足一块的残留（相同文件的正常现象）。
-	// 此时关闭 stdin 通知远端无需重建，避免无意义的磁盘写入。
-	if eng.LiteralBytes < int64(sig.BlockSize) {
-		stdin.Close()
-		<-stderrDone
-		// sync mtime just in case
-		// 同步 mtime（以防万一）
-		e.transport.SetModTime(remotePath, info.ModTime)
-		savedBytes = info.Size
-		return 0, savedBytes, nil
+	const batchSize = 256
+	batch := make([]delta.MatchResult, 0, batchSize)
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := delta.WireEncodeInstructions(stdin, batch); err != nil {
+			return err
+		}
+		batch = batch[:0]
+		return nil
 	}
 
-	// 3. send instructions to remote (stdin must still be alive)
-	// 3. 发送指令到远端（stdin 必须还活着）
-	if err := delta.WireEncodeInstructions(stdin, insts); err != nil {
+	err = eng.SearchReader(f, info.Size, func(mr delta.MatchResult) error {
+		cp := mr
+		if mr.IsLiteral {
+			cp.Data = make([]byte, len(mr.Data))
+			copy(cp.Data, mr.Data)
+		}
+		batch = append(batch, cp)
+		if len(batch) >= batchSize {
+			return flushBatch()
+		}
+		return nil
+	})
+	if err != nil {
 		stdin.Close()
 		<-stderrDone
 		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta encode instructions: %w", err)
+		return info.Size, 0, fmt.Errorf("delta search: %w", err)
+	}
+	// Flush remaining batch.
+	if err := flushBatch(); err != nil {
+		stdin.Close()
+		<-stderrDone
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("delta encode: %w", err)
+	}
+	// End-of-stream marker: count=0 tells receiver we're done.
+	if _, err := stdin.Write([]byte{0, 0, 0, 0}); err != nil {
+		stdin.Close()
+		<-stderrDone
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("delta eos: %w", err)
 	}
 
-	// 4. close stdin (signal remote to start reconstruction), wait for remote to finish
-	// 4. 关闭 stdin（信号远端开始重建），等待远端完成
+	// Instructions already streamed to remote via the callback above.
+	// Close stdin to signal remote to start reconstruction.
 	stdin.Close()
 	<-stderrDone
 
@@ -419,11 +408,9 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
 
-	// sync mtime to prevent remote reconstruction's "current time" from mismatching local.
-	// 同步 mtime，避免远端重建后的"当前时间"与本地不一致。
 	e.transport.SetModTime(remotePath, info.ModTime)
 
-	savedBytes = int64(len(lr.data)) - eng.LiteralBytes
+	savedBytes = info.Size - eng.LiteralBytes
 	return eng.LiteralBytes, savedBytes, nil
 }
 
