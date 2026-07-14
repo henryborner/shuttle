@@ -17,19 +17,27 @@ import (
 )
 
 var (
-	cfgPath  string
-	dryRun   bool
-	verbose  bool
-	workers  int
-	algoName string
+	cfgPath    string
+	dryRun     bool
+	verbose    bool
+	workers    int
+	algoName   string
+	schemaFlag bool
 
 	versionStr = "0.1.5.0"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
-		Short: "Shuttle — rsync-style delta sync for Windows",
-		Long: `Shuttle is a Windows-native file sync tool.
-Powered by a hand-optimized AVX2/SSE2/Go 3-tier checksum engine and rsync delta algorithm.
-Config-file driven: define local→remote mappings in syncd.yaml, then push.`,
+		Short: "Incremental file sync over SSH",
+		Long: `Shuttle syncs local directories to remote Linux servers over SSH.
+
+It compares source and target using the rsync delta algorithm:
+files that exist on both sides transfer only a checksum signature
+(a few KB) instead of the full file content. Only changed portions
+of files are sent across the network.
+
+Mappings between local paths and remote servers are defined in a
+syncd.yaml config file. A terminal UI (TUI) is also available for
+interactive management.`,
 		Version: versionStr,
 	}
 )
@@ -42,61 +50,91 @@ func main() {
 		return
 	}
 
-	// push / 推送命令
+	// push
 	pushCmd := &cobra.Command{
 		Use:   "push [task name]",
-		Short: "Run sync tasks from config",
-		Long:  "Run one or all sync tasks defined in syncd.yaml.",
-		Run:   runPush,
+		Short: "Execute one or all sync tasks",
+		Long: `Run sync tasks defined in syncd.yaml.
+
+If a task name is given, only that task runs. Otherwise all tasks
+are executed in order. Each task connects to its target server via
+SSH, compares local and remote files, and transfers only the
+differences (delta).`,
+		Run: runPush,
 	}
-	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "config file path")
-	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview only, no changes")
-	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "detailed stats output")
-	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "parallel workers (0=config or 4)")
-	pushCmd.Flags().StringVar(&algoName, "algo", "", "override checksum algorithm (md5/xxh64/sha256)")
+	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
+	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be transferred without making changes")
+	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print per-file transfer details")
+	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "number of parallel delta workers (0 uses config default, max 8)")
+	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, xxh64, or sha256 (overrides config)")
 	rootCmd.AddCommand(pushCmd)
 
-	// tui / 终端界面
+	// tui
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "tui",
-		Short: "Launch interactive terminal UI",
-		Run:   runTUI,
+		Short: "Open the terminal UI",
+		Long: `Launch the interactive terminal user interface.
+
+The TUI provides panes for dashboard (sync status overview),
+mapping management (add/edit/delete sync tasks), server management
+(test connection, deploy agent), a file explorer, and settings
+(language, checksum algorithm, worker count).`,
+		Run: runTUI,
 	})
 
-	// list / 列出任务
+	// list
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "List all tasks and servers from config",
+		Short: "Print all tasks and servers from syncd.yaml",
+		Long:  `Read syncd.yaml and print every configured task and server to stdout.`,
 		Run:   runList,
 	})
 
-	// config / 配置信息
-	rootCmd.AddCommand(&cobra.Command{
+	// config
+	configCmd := &cobra.Command{
 		Use:   "config",
-		Short: "Show full config summary",
-		Run:   runConfig,
-	})
+		Short: "Print the full syncd.yaml configuration summary",
+		Long: `Load syncd.yaml and display a structured summary:
+servers (name, host, port, user, auth method) and tasks
+(name, source, target, enabled options).
 
-	// test / 测试连接
+Use --schema to print a reference of all available config fields
+with descriptions and examples instead.`,
+		Run: runConfig,
+	}
+	configCmd.Flags().BoolVar(&schemaFlag, "schema", false, "print config field reference instead of loaded config")
+	rootCmd.AddCommand(configCmd)
+
+	// test
 	testCmd := &cobra.Command{
 		Use:   "test <server name>",
-		Short: "Test SSH connection to a server",
-		Args:  cobra.ExactArgs(1),
-		Run:   runTest,
+		Short: "Verify SSH connectivity to a server",
+		Long: `Open an SSH connection to the named server and report success or failure.
+
+This is useful before running sync tasks to ensure the server
+is reachable and the key or password is accepted.`,
+		Args: cobra.ExactArgs(1),
+		Run:  runTest,
 	}
 	rootCmd.AddCommand(testCmd)
 
-	// init / 生成配置
+	// init
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
-		Short: "Generate sample syncd.yaml in current directory",
-		Run:   runInit,
+		Short: "Write a syncd.yaml template to the current directory",
+		Long: `Create a new syncd.yaml file with commented example entries
+for servers and tasks. Safe to run — will not overwrite an
+existing file.
+
+After init, use 'shuttle config --schema' to see field descriptions.`,
+		Run: runInit,
 	})
 
-	// version / 版本信息
+	// version
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
-		Short: "Show version and build info",
+		Short: "Print version, Go runtime, and available checksum algorithms",
+		Long:  `Display the Shuttle version, Go compiler version, target OS/arch, and the list of supported strong checksum algorithms.`,
 		Run:   runVersion,
 	})
 
@@ -106,11 +144,10 @@ func main() {
 }
 
 func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Printf("Shuttle v%s — rsync-style delta sync for Windows\n", versionStr)
+	fmt.Printf("Shuttle v%s\n", versionStr)
 	fmt.Printf("  Go:     %s\n", runtime.Version())
 	fmt.Printf("  OS:     %s\n", runtime.GOOS)
 	fmt.Printf("  Arch:   %s\n", runtime.GOARCH)
-	fmt.Printf("  Engine: AVX2/SSE2/Go 3-tier checksum\n")
 	fmt.Printf("  Strong: %s\n", delta.GetDefault())
 	fmt.Printf("  Algos:  %s\n", strings.Join(delta.ListAlgos(), ", "))
 }
@@ -124,6 +161,10 @@ func runPush(cmd *cobra.Command, args []string) {
 }
 
 func runConfig(cmd *cobra.Command, args []string) {
+	if schemaFlag {
+		runSchema()
+		return
+	}
 	cfg, err := config.Load("syncd.yaml")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config found: %v\n", err)
@@ -200,6 +241,68 @@ func runTest(cmd *cobra.Command, args []string) {
 	fmt.Println("OK — connected successfully")
 }
 
+func runSchema() {
+	fmt.Println(`syncd.yaml 配置项参考
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+顶层字段
+────────────────────────
+  version    string    配置文件版本，目前固定为 "1.0"
+  language   string    界面语言: en / zh（默认 zh）
+  checksum   string    默认校验和算法: md5 / sha256 / xxh64（默认 xxh64）
+  workers    int       delta 并行 worker 数: 1=串行, 2/4/8=并行（默认 4）
+  servers    []Server  服务器连接列表
+  tasks      []Task    同步任务列表
+
+Server（服务器）
+────────────────────────
+  name       string    服务器名称，在 task.target 中引用
+  host       string    SSH 主机地址（IP 或域名）
+  port       int       SSH 端口（默认 22）
+  user       string    登录用户名
+  key_file   string    SSH 私钥路径，如 ~/.ssh/id_ed25519（优先于密码）
+  password   string    登录密码（密钥不可用时作为后备，不推荐明文写密码）
+  protect    []string  保护模式（glob），匹配的远端文件永不覆盖/删除
+                       示例: ["*.db", "*.pem", "config.yaml", "secrets/"]
+
+Task（同步任务）
+────────────────────────
+  name       string    任务名称
+  source     string    本地源路径（文件夹或单文件）
+  target     string    远端目标，格式: <服务器名>:<路径>
+                       路径末尾的 / 表示映射到该目录下
+  options    Options   同步选项
+
+Options（同步选项）
+────────────────────────
+  delete     bool      是否删除远端多余文件（默认 false）
+                       开启后，远端有而本地没有的文件会被删除
+  exclude    []string  排除模式列表（glob），不传输匹配的文件/目录
+                       示例: ["*.tmp", ".git/", "node_modules/"]
+  compress   bool      SSH 传输压缩（默认 false，局域网不建议开启）
+  checksum   bool      用校验和判断文件是否变化（默认 false）
+                       false: 用修改时间 + 文件大小判断
+                       true:  用强校验和（xxh64/md5/sha256）完整比对
+  flat       bool      扁平映射（默认 false）
+                       false: 源文件夹名会出现在目标路径中
+                       true:  直接将源文件夹内容映射到目标，不套外层目录
+  show_dots  bool      传输隐藏文件/目录（默认 false）
+                       隐藏文件指以 . 开头的文件或目录
+  watch      bool      监听模式（预留，暂未实现）
+
+校验和算法
+────────────────────────
+  xxh64      64 位 xxHash（默认），速度最快
+  md5        128 位 MD5，兼容性好
+  sha256     256 位 SHA-2，安全性最高
+
+用法提示
+────────────────────────
+  查看当前配置:  shuttle config
+  查看本参考:    shuttle config --schema
+  生成配置模板:  shuttle init`)
+}
+
 func runInit(cmd *cobra.Command, args []string) {
 	if _, err := os.Stat("syncd.yaml"); err == nil {
 		fmt.Println("syncd.yaml already exists")
@@ -207,6 +310,7 @@ func runInit(cmd *cobra.Command, args []string) {
 	}
 	os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
 	fmt.Println("Created syncd.yaml — edit it and run 'shuttle push'")
+	fmt.Println("Run 'shuttle config --schema' for a full field reference.")
 }
 
 const initTemplate = `# Shuttle 同步配置文件

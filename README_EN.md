@@ -1,39 +1,33 @@
 [简体中文](README.md) | English
 
-# 🚀 Shuttle — rsync-style delta sync for Windows
+# Shuttle — rsync-style delta sync for Windows
 
-[![Go](https://img.shields.io/badge/Go-1.26-blue)](https://go.dev)
-[![Platform](https://img.shields.io/badge/Windows-native-purple)]()
-[![Version](https://img.shields.io/badge/version-0.1.4.8-green)]()
-
-> Config-driven · Delta transfer · TUI · SFTP · Bilingual
-
-**Shuttle** is a Windows-native incremental file sync tool. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library with AVX2/AVX-512 SIMD acceleration). Define mappings in `syncd.yaml` — one command to push. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
+**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
 ```powershell
 shuttle                    # double-click to launch TUI
 shuttle push web           # sync a task
 ```
 
-## ✨ Features
+## Features
 
-- **📋 Config-driven** — Define mappings in `syncd.yaml`
-- **🔄 Delta transfer** — rsync algorithm, signature-only transfer for identical files (few KB)
-- **🛡 Per-server protect** — Remote files never overwritten or deleted
-- **🖥 TUI** — Dashboard, mappings, servers, explorer, settings
-- **🌐 SFTP/SSH** — Local → remote with auto key detection
-- **💾 Large file optimized** — mmap, 1GB files compared in seconds (SSD)
-- **🌍 Bilingual** — EN/ZH toggle in settings
-- **📦 Single binary** — `shuttle.exe`, zero deps
+- **Config-driven** — Define mappings in `syncd.yaml`
+- **Delta transfer** — rsync algorithm, only signatures transferred for unchanged files
+- **Per-server protect** — Remote files never overwritten or deleted
+- **TUI** — Dashboard, mappings, servers, explorer, settings
+- **SFTP/SSH** — Local → remote with auto key detection
+- **mmap** — Memory-mapped I/O for large file comparison
+- **Bilingual** — EN/ZH toggle in settings
+- **Single binary** — `shuttle.exe`, zero extra dependencies
 
-## 📦 Install
+## Install
 
 Download from [Releases](https://github.com/henryborner/shuttle/releases):
 
 - **`shuttle.exe`** — Windows main program
-- **`shuttle_linux`** — Linux remote agent (one-click deploy from TUI)
+- **`shuttle_linux`** — Linux remote agent (deploy via TUI)
 
-## 🚀 Quick Start
+## Quick Start
 
 ```powershell
 .\shuttle.exe                   # double-click for TUI
@@ -44,9 +38,9 @@ Download from [Releases](https://github.com/henryborner/shuttle/releases):
 .\shuttle.exe push --dry-run    # preview changes
 ```
 
-> No manual config needed: just double-click `shuttle.exe`.
+> Double-click `shuttle.exe` to enter TUI and create config — no manual YAML editing needed.
 
-## 📁 Config
+## Config
 
 ```yaml
 # syncd.yaml
@@ -67,7 +61,7 @@ tasks:
       exclude: ["*.tmp", ".git/"]
 ```
 
-## ⌨️ CLI
+## CLI
 
 | Command | Description |
 |---------|-------------|
@@ -87,7 +81,7 @@ tasks:
 | `-w N` | Parallel workers (default 4) |
 | `--algo md5\|xxh64\|sha256` | Checksum algorithm |
 
-## 🎮 Shortcuts
+## Shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -98,6 +92,39 @@ tasks:
 | `P` | Edit protect list |
 | `Tab` | Toggle file browser |
 
-## 📄 License
+## How It Works
 
-MIT
+### Delta Transfer (rsync algorithm)
+
+Shuttle uses the rsync delta-transfer algorithm to minimize network traffic:
+
+1. **Chunking** — The source file is split into fixed-size blocks (default 2048 bytes)
+2. **Signatures** — Two checksums are computed per block: a fast rolling checksum (for quick matching) and a strong checksum (xxh64/md5/sha256, for final verification)
+3. **Matching** — The remote side receives the signature list and slides a window over its copy of the file to find matching blocks
+4. **Delta** — Only non-matching byte sequences (literals) are transmitted; matching blocks are referenced by index
+5. **Reconstruction** — The remote side follows delta instructions: copy matching blocks from the existing file + insert new data
+
+If files are identical on both ends, only the signature list (a few KB) is transferred — no file data moves.
+
+### Wire Protocol
+
+Shuttle uses its own binary wire protocol (not standard rsync). Key parameters:
+
+- **CHAR_OFFSET = 31**: character offset parameter affecting rolling checksum collision properties
+- **Default strong checksum = xxh64**: 64-bit xxHash, balancing speed and collision resistance
+- md5 (128-bit) and sha256 (256-bit) available as alternatives
+
+### Server Protection
+
+Each server can have a protect list (glob patterns). Matching remote files are **never overwritten or deleted**. Useful for safeguarding databases, certificates, config files, and other critical remote data.
+
+### Remote Agent
+
+Shuttle connects to Linux servers via SSH and runs a lightweight `shuttle_linux` agent on the remote side. The agent handles:
+- Scanning the remote filesystem
+- Receiving signature lists and performing block matching
+- Reconstructing files from delta instructions
+
+The agent can be deployed or updated from the TUI servers page.
+
+## License
