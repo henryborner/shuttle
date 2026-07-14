@@ -242,65 +242,65 @@ func runTest(cmd *cobra.Command, args []string) {
 }
 
 func runSchema() {
-	fmt.Println(`syncd.yaml 配置项参考
-━━━━━━━━━━━━━━━━━━━━━━━━━
+	fmt.Println(`syncd.yaml Configuration Reference
+=====================================
 
-顶层字段
+Top-Level Fields
 ────────────────────────
-  version    string    配置文件版本，目前固定为 "1.0"
-  language   string    界面语言: en / zh（默认 zh）
-  checksum   string    默认校验和算法: md5 / sha256 / xxh64（默认 xxh64）
-  workers    int       delta 并行 worker 数: 1=串行, 2/4/8=并行（默认 4）
-  servers    []Server  服务器连接列表
-  tasks      []Task    同步任务列表
+  version    string    Config version, currently "1.0"
+  language   string    UI language: en / zh (default zh)
+  checksum   string    Default strong checksum: md5 / sha256 / xxh64 (default xxh64)
+  workers    int       Parallel delta workers: 1=serial, 2/4/8=parallel (default 4)
+  servers    []Server  Server connection list
+  tasks      []Task    Sync task list
 
-Server（服务器）
+Server
 ────────────────────────
-  name       string    服务器名称，在 task.target 中引用
-  host       string    SSH 主机地址（IP 或域名）
-  port       int       SSH 端口（默认 22）
-  user       string    登录用户名
-  key_file   string    SSH 私钥路径，如 ~/.ssh/id_ed25519（优先于密码）
-  password   string    登录密码（密钥不可用时作为后备，不推荐明文写密码）
-  protect    []string  保护模式（glob），匹配的远端文件永不覆盖/删除
-                       示例: ["*.db", "*.pem", "config.yaml", "secrets/"]
+  name       string    Server name, referenced in task.target
+  host       string    SSH host address (IP or domain)
+  port       int       SSH port (default 22)
+  user       string    Login username
+  key_file   string    SSH private key path, e.g. ~/.ssh/id_ed25519 (preferred over password)
+  password   string    Login password (fallback when key is unavailable; plaintext not recommended)
+  protect    []string  Protect patterns (glob) — matching remote files are NEVER overwritten or deleted
+                       Example: ["*.db", "*.pem", "config.yaml", "secrets/"]
 
-Task（同步任务）
+Task
 ────────────────────────
-  name       string    任务名称
-  source     string    本地源路径（文件夹或单文件）
-  target     string    远端目标，格式: <服务器名>:<路径>
-                       路径末尾的 / 表示映射到该目录下
-  options    Options   同步选项
+  name       string    Task name
+  source     string    Local source path (directory or single file)
+  target     string    Remote target, format: <server name>:<path>
+                       A trailing / means "map contents into this directory"
+  options    Options   Sync options
 
-Options（同步选项）
+Options
 ────────────────────────
-  delete     bool      是否删除远端多余文件（默认 false）
-                       开启后，远端有而本地没有的文件会被删除
-  exclude    []string  排除模式列表（glob），不传输匹配的文件/目录
-                       示例: ["*.tmp", ".git/", "node_modules/"]
-  compress   bool      SSH 传输压缩（默认 false，局域网不建议开启）
-  checksum   bool      用校验和判断文件是否变化（默认 false）
-                       false: 用修改时间 + 文件大小判断
-                       true:  用强校验和（xxh64/md5/sha256）完整比对
-  flat       bool      扁平映射（默认 false）
-                       false: 源文件夹名会出现在目标路径中
-                       true:  直接将源文件夹内容映射到目标，不套外层目录
-  show_dots  bool      传输隐藏文件/目录（默认 false）
-                       隐藏文件指以 . 开头的文件或目录
-  watch      bool      监听模式（预留，暂未实现）
+  delete     bool      Delete extra files on the remote side (default false)
+                       When enabled, remote files not present locally will be removed.
+  exclude    []string  Glob patterns to skip — matching files/dirs are not transferred
+                       Example: ["*.tmp", ".git/", "node_modules/"]
+  compress   bool      Enable SSH transport compression (default false; not recommended for LAN)
+  checksum   bool      Use strong checksums to detect file changes (default false)
+                       false: compare by mtime + file size
+                       true:  compare by full strong checksum (xxh64/md5/sha256)
+  flat       bool      Flat mapping (default false)
+                       false: source folder name appears in the target path
+                       true:  map source contents directly to target, no outer folder
+  show_dots  bool      Transfer hidden files/directories (default false)
+                       Hidden files are those whose name starts with a dot (.)
+  watch      bool      Watch mode (reserved, not yet implemented)
 
-校验和算法
+Strong Checksum Algorithms
 ────────────────────────
-  xxh64      64 位 xxHash（默认），速度最快
-  md5        128 位 MD5，兼容性好
-  sha256     256 位 SHA-2，安全性最高
+  xxh64      64-bit xxHash (default), fastest
+  md5        128-bit MD5, best compatibility
+  sha256     256-bit SHA-2, strongest
 
-用法提示
+Usage
 ────────────────────────
-  查看当前配置:  shuttle config
-  查看本参考:    shuttle config --schema
-  生成配置模板:  shuttle init`)
+  View current config:    shuttle config
+  Show this reference:    shuttle config --schema
+  Generate a template:    shuttle init`)
 }
 
 func runInit(cmd *cobra.Command, args []string) {
