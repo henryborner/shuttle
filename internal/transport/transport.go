@@ -34,6 +34,7 @@ type Transport interface {
 	MkdirAll(path string) error
 	Remove(path string) error
 	RemoveRecursive(path string) error
+	RemoveDirectory(path string) error
 	Stat(path string) (FileInfo, error)
 	SetModTime(path string, mtime time.Time) error
 	Exec(command string) (stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser, err error)
@@ -165,6 +166,8 @@ func (t *SFTPTransport) ListDir(path string) ([]FileInfo, error) {
 }
 
 // skipDirs lists directory base names to skip during recursive walk.
+// Only applied at the first level under the target root to avoid hiding
+// user project directories with the same names (e.g. dev/, run/).
 var skipDirs = map[string]bool{
 	"proc": true, "sys": true, "dev": true, "run": true,
 	"snap": true, "lost+found": true,
@@ -179,20 +182,27 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 	var count int
 	const maxFiles = 100000
 	walker := t.client.Walk(root)
-	rootSlash := filepath.ToSlash(root)
+	rootSlash := strings.TrimRight(filepath.ToSlash(root), "/")
+	truncated := false
 	for walker.Step() {
 		if count >= maxFiles {
+			truncated = true
 			break
 		}
+		// Per-entry errors are silently skipped: the missing entry won't
+		// appear in remoteFiles, so it won't be deleted.
 		if err := walker.Err(); err != nil {
 			continue
 		}
 		path := filepath.ToSlash(walker.Path())
-		if path == rootSlash || path == strings.TrimSuffix(rootSlash, "/") {
+		if path == rootSlash || path == rootSlash+"/" {
 			continue // 跳过根目录自身
 		}
 		info := walker.Stat()
-		if info.IsDir() && skipDirs[info.Name()] {
+		// Only skip system dirs at the first level under root.
+		// Deeper directories with the same names (e.g. project/dev/) are NOT skipped.
+		depth := strings.Count(strings.TrimPrefix(path, rootSlash), "/")
+		if info.IsDir() && depth == 1 && skipDirs[info.Name()] {
 			walker.SkipDir()
 			continue
 		}
@@ -206,6 +216,9 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 			continue // 目录已记录，不重复计数
 		}
 		count++
+	}
+	if truncated {
+		return result, fmt.Errorf("remote listing truncated at %d files (max %d); increase maxFiles or split the task", count, maxFiles)
 	}
 	return result, nil
 }
@@ -224,6 +237,16 @@ func (t *SFTPTransport) Remove(path string) error {
 		return fmt.Errorf("not connected")
 	}
 	return t.client.Remove(path)
+}
+
+// RemoveDirectory removes an empty directory. Fails if the directory is not empty.
+// This is the safe alternative to RemoveRecursive — it won't accidentally delete
+// files that should be kept.
+func (t *SFTPTransport) RemoveDirectory(path string) error {
+	if t.client == nil {
+		return fmt.Errorf("not connected")
+	}
+	return t.client.RemoveDirectory(path)
 }
 
 // RemoveRecursive recursively deletes a directory and its contents.

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,16 +59,35 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
+
+	// Safety guard: empty source + delete=true would wipe the entire remote.
+	// This is especially dangerous with skipDots=true (default), which hides
+	// dot-files — the source may appear empty but actually contain .git/, .env, etc.
+	// 安全守卫：空 source + delete=true 会擦除整个远端。
+	if len(localFiles) == 0 && opts.Delete && !opts.DryRun {
+		return nil, fmt.Errorf("safety: source contains no files and delete is enabled — refusing to wipe remote target; set delete:false or ensure source is not empty (check skipDots/exclude settings)")
+	}
+
 	remoteFiles := make(map[string]FileInfo)
 	// scan remote target root once; avoid repeated Walk for each subdirectory
 	// 从远端 target 根目录只遍历一次，避免对每个子目录重复 Walk
-	entries, err := e.transport.ListDirRecursive(opts.Target)
-	if err == nil {
-		for _, f := range entries {
-			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
-			key = strings.TrimPrefix(key, "/")
-			remoteFiles[key] = f
-		}
+	entries, listErr := e.transport.ListDirRecursive(opts.Target)
+	// Always use partial results even when the listing was truncated or had
+	// errors — an empty remoteFiles map would treat all local files as NEW
+	// and skip all deletions, which is wasteful but safe.
+	for _, f := range entries {
+		key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
+		// TrimLeft removes all leading slashes, handling edge cases like
+		// double-slashes from SFTP servers (e.g. /tmp//assets/file.js).
+		// TrimPrefix would only remove one, leaving a leading / that
+		// causes the key to mismatch localSet → false orphan → data loss.
+		key = strings.TrimLeft(key, "/")
+		remoteFiles[key] = f
+	}
+	if listErr != nil {
+		// Listing was truncated or had errors — remote view is incomplete.
+		// Sync proceeds safely (no deletions for invisible files) but some
+		// files may be unnecessarily re-uploaded.
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
@@ -202,54 +222,112 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	if opts.Delete {
-		for name, rf := range remoteFiles {
-			found := false
-			for _, lf := range localFiles {
-				rp, _ := filepath.Rel(opts.Source, lf.Path)
-				if rp == "." || rp == "" {
-					rp = filepath.Base(opts.Source)
-				} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
-					rp = filepath.Join(filepath.Base(opts.Source), rp)
-				}
-				if filepath.ToSlash(rp) == name {
-					found = true
-					break
-				}
+		// Build a set of local file relative paths for O(1) lookup.
+		// Also track which directories are still needed (contain at least one local file).
+		// 构建本地文件相对路径集合，同时记录哪些目录仍被需要。
+		localSet := make(map[string]bool, len(localFiles))
+		neededDirs := make(map[string]bool)
+		for _, lf := range localFiles {
+			rp, _ := filepath.Rel(opts.Source, lf.Path)
+			if rp == "." || rp == "" {
+				rp = filepath.Base(opts.Source)
+			} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
+				rp = filepath.Join(filepath.Base(opts.Source), rp)
 			}
-			if !found {
-				// protect check: remote path matches protect pattern → skip deletion
-				// 保护检查：远端路径匹配 protect 模式则跳过删除
-				if MatchProtect(rf.Path, opts.Protect) {
-					stats.ProtectedFiles++
-					e.hook.OnFileDone(FileEvent{
-						RelPath: name, RemotePath: rf.Path,
-						FileSize: rf.Size, IsProtected: true,
-					})
-					continue
-				}
-				if rf.IsDir {
-					// recursively delete directory
-					// 递归删除目录
-					if !opts.DryRun {
-						if err := e.transport.RemoveRecursive(rf.Path); err != nil {
-							stats.Errors = append(stats.Errors, fmt.Errorf("delete dir %s: %w", rf.Path, err))
-							continue
-						}
-					}
-				} else {
-					if !opts.DryRun {
-						if err := e.transport.Remove(rf.Path); err != nil {
-							stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
-							continue
-						}
-					}
-				}
-				stats.DeletedFiles++
+			key := filepath.ToSlash(rp)
+			localSet[key] = true
+			// Mark all ancestor directories as needed
+			dir := filepath.ToSlash(filepath.Dir(key))
+			for dir != "." && dir != "/" && dir != "" {
+				neededDirs[dir] = true
+				dir = filepath.ToSlash(filepath.Dir(dir))
+			}
+		}
+
+		// First pass: delete orphan files only.
+		// Directories are never deleted just because they don't match a local "file" —
+		// that would cause catastrophic data loss (Bug #1).
+		// 第一遍：仅删除孤立文件。目录不会因为匹配不到本地"文件"而被删除，
+		// 否则会导致严重数据丢失（Bug #1）。
+		for name, rf := range remoteFiles {
+			if rf.IsDir {
+				continue // directories handled in second pass
+			}
+			if localSet[name] {
+				continue // file exists locally, keep it
+			}
+			// protect check: remote path matches protect pattern → skip deletion
+			// 保护检查：远端路径匹配 protect 模式则跳过删除
+			if MatchProtect(rf.Path, opts.Protect) {
+				stats.ProtectedFiles++
 				e.hook.OnFileDone(FileEvent{
 					RelPath: name, RemotePath: rf.Path,
-					FileSize: rf.Size, IsDeleted: true,
+					FileSize: rf.Size, IsProtected: true,
 				})
+				continue
 			}
+			if !opts.DryRun {
+				if err := e.transport.Remove(rf.Path); err != nil {
+					// If the file doesn't exist on the remote, it's already gone —
+					// treat as success, not an error (Bug #3).
+					// 如果远端文件已不存在，视为成功而非错误（Bug #3）。
+					if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
+						// File truly doesn't exist — desired state achieved
+					} else {
+						stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
+						continue
+					}
+				}
+			}
+			stats.DeletedFiles++
+			e.hook.OnFileDone(FileEvent{
+				RelPath: name, RemotePath: rf.Path,
+				FileSize: rf.Size, IsDeleted: true,
+			})
+		}
+
+		// Second pass: clean up empty directories (bottom-up by depth).
+		// Only directories NOT needed by any local file are candidates.
+		// RemoveDirectory fails safely if the directory is not empty.
+		// 第二遍：安全清理空目录（按深度从深到浅）。
+		// 仅清理不被任何本地文件需要的目录，非空目录时 RemoveDirectory 安全失败。
+		var emptyDirCandidates []FileInfo
+		for name, rf := range remoteFiles {
+			if !rf.IsDir {
+				continue
+			}
+			if neededDirs[name] {
+				continue
+			}
+			// protect check: remote directory matches protect pattern → skip deletion
+			if MatchProtect(rf.Path, opts.Protect) {
+				stats.ProtectedFiles++
+				e.hook.OnFileDone(FileEvent{
+					RelPath: name, RemotePath: rf.Path,
+					FileSize: rf.Size, IsProtected: true,
+				})
+				continue
+			}
+			emptyDirCandidates = append(emptyDirCandidates, rf)
+		}
+		// Sort deepest first so we can remove subdirectories before their parents
+		sort.Slice(emptyDirCandidates, func(i, j int) bool {
+			return strings.Count(emptyDirCandidates[i].Path, "/") > strings.Count(emptyDirCandidates[j].Path, "/")
+		})
+		for _, d := range emptyDirCandidates {
+			if !opts.DryRun {
+				if err := e.transport.RemoveDirectory(d.Path); err != nil {
+					// Directory not empty or already gone — both are fine, skip silently
+					continue
+				}
+			}
+			stats.DeletedFiles++
+			relName := filepath.ToSlash(strings.TrimPrefix(d.Path, opts.Target))
+			relName = strings.TrimPrefix(relName, "/")
+			e.hook.OnFileDone(FileEvent{
+				RelPath: relName, RemotePath: d.Path,
+				FileSize: d.Size, IsDeleted: true,
+			})
 		}
 	}
 
@@ -405,7 +483,11 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	<-stderrDone
 
 	if errBuf.Len() > 0 {
-		return 0, 0, fmt.Errorf("remote: %s", errBuf.String())
+		// Remote process reported an error after receiving instructions.
+		// The remote uses atomic rename, so the original file should still be
+		// intact, but fall back to full upload to guarantee correctness.
+		_ = e.uploadFile(info, remotePath)
+		return info.Size, 0, fmt.Errorf("remote: %s", errBuf.String())
 	}
 
 	e.transport.SetModTime(remotePath, info.ModTime)
@@ -465,12 +547,26 @@ func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileI
 		return nil
 	})
 
-	// Fallback: if root is a single file, WalkDir might miss it
+	// Fallback: if root is a single file, WalkDir might miss it.
+	// Re-check excludes and skipDots to avoid uploading excluded files.
 	if len(files) == 0 && err == nil {
 		if info, stErr := os.Stat(root); stErr == nil && !info.IsDir() {
-			files = append(files, localFileInfo{
-				Path: root, Size: info.Size(), ModTime: info.ModTime(),
-			})
+			base := filepath.Base(root)
+			// Re-check exclude patterns
+			excluded := false
+			for _, p := range excludes {
+				pat := strings.TrimRight(p, "/")
+				if ok, _ := filepath.Match(pat, base); ok {
+					excluded = true
+					break
+				}
+			}
+			// Re-check skipDots
+			if !excluded && (!skipDots || !strings.HasPrefix(base, ".")) {
+				files = append(files, localFileInfo{
+					Path: root, Size: info.Size(), ModTime: info.ModTime(),
+				})
+			}
 		}
 	}
 
