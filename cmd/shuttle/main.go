@@ -326,7 +326,6 @@ Options
                               E:\projects\dist\  →  /var/www/html/...
   show_dots  bool      Transfer hidden files/directories (default false)
                        Hidden files are those whose name starts with a dot (.)
-  watch      bool      Watch mode (reserved, not yet implemented)
 
 Strong Checksum Algorithms
 ────────────────────────
