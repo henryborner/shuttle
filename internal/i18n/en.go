@@ -7,7 +7,7 @@ func init() {
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "Incremental File Sync",
-		"app.version":      " v0.1.5.5",
+		"app.version":      " v0.1.5.6",
 		"app.connected":    "Connected",
 		"app.disconnected": "Disconnected",
 
