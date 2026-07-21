@@ -249,7 +249,7 @@ Top-Level Fields
 ────────────────────────
   version    string    Config version, currently "1.0"
   language   string    UI language: en / zh (default zh)
-  checksum   string    Default strong checksum: md5 / sha256 / xxh64 (default xxh64)
+  checksum   string    Default strong checksum: md5 / sha256 / xxh64 / xxh3 (default xxh64)
   workers    int       Parallel delta workers: 1=serial, 2/4/8=parallel (default 4)
   servers    []Server  Server connection list
   tasks      []Task    Sync task list
@@ -268,33 +268,74 @@ Server
 Task
 ────────────────────────
   name       string    Task name
-  source     string    Local source path (directory or single file)
+  source     string    Local source path.
+                       ── Folder ──
+                         End with \ or / to sync the folder's CONTENTS into target.
+                         Examples:
+                           E:\projects\dist\       (Windows)
+                           /home/deploy/site/      (Linux/WSL)
+                       ── Single file ──
+                         No trailing slash.  The file is synced directly.
+                         Examples:
+                           E:\configs\nginx.conf
+                           /etc/myapp/config.yaml
   target     string    Remote target, format: <server name>:<path>
-                       A trailing / means "map contents into this directory"
+                       ── Folder sync ──
+                         End with / to map source contents INTO the directory.
+                         Example: myserver:/var/www/html/
+                           source=E:\dist\  →  files go to /var/www/html/*
+                       ── Single file sync ──
+                         No trailing / — the file is placed at exactly this path.
+                         Example: myserver:/etc/nginx/nginx.conf
+                           source=E:\configs\nginx.conf  →  overwrites /etc/nginx/nginx.conf
   options    Options   Sync options
 
 Options
 ────────────────────────
   delete     bool      Delete extra files on the remote side (default false)
                        When enabled, remote files not present locally will be removed.
+                       ⚠ Only applies to folder syncs.  Ignored for single-file tasks.
   exclude    []string  Glob patterns to skip — matching files/dirs are not transferred
                        Example: ["*.tmp", ".git/", "node_modules/"]
   compress   bool      Enable SSH transport compression (default false; not recommended for LAN)
   checksum   bool      Use strong checksums to detect file changes (default false)
-                       false: compare by mtime + file size
-                       true:  compare by full strong checksum (xxh64/md5/sha256)
-  flat       bool      Flat mapping (default false)
-                       false: source folder name appears in the target path
-                       true:  map source contents directly to target, no outer folder
+                       false: compare by mtime + file size (fast, 1-second precision)
+                       true:  compare by full strong checksum (accurate, slower)
+  flat       bool      Flat mapping (default false, only meaningful for folder syncs)
+                       false: source folder name appears in the target path.
+                              E:\projects\dist\  →  /var/www/html/dist/...
+                       true:  map source contents directly, no outer folder.
+                              E:\projects\dist\  →  /var/www/html/...
   show_dots  bool      Transfer hidden files/directories (default false)
                        Hidden files are those whose name starts with a dot (.)
   watch      bool      Watch mode (reserved, not yet implemented)
 
 Strong Checksum Algorithms
 ────────────────────────
-  xxh64      64-bit xxHash (default), fastest
-  md5        128-bit MD5, best compatibility
-  sha256     256-bit SHA-2, strongest
+  xxh64      64-bit xxHash (default), fastest — good for LAN/SSD
+  xxh3       128-bit xxH3, fast non-crypto hash with wider output (~2⁻⁶⁴ collision)
+  md5        128-bit MD5, best cross-platform compatibility
+  sha256     256-bit SHA-2, strongest — use when integrity matters most
+  (All algorithms have SIMD-accelerated assembly paths on amd64.)
+
+Examples
+────────────────────────
+  # Folder sync: deploy a website build
+  tasks:
+    - name: web
+      source: E:\projects\dist\
+      target: myserver:/var/www/html/
+      options:
+        delete: true
+        exclude: [".DS_Store", "*.map"]
+
+  # Single file sync: push a config file
+  tasks:
+    - name: nginx-config
+      source: E:\configs\nginx.conf
+      target: myserver:/etc/nginx/nginx.conf
+      options:
+        checksum: true
 
 Usage
 ────────────────────────
@@ -315,10 +356,11 @@ func runInit(cmd *cobra.Command, args []string) {
 
 const initTemplate = `# Shuttle 同步配置文件
 # 用法: shuttle push [任务名]
+# 完整参考: shuttle config --schema
 
 version: "1.0"
 language: zh               # en / zh
-checksum: xxh64            # md5 / sha256 / xxh64
+checksum: xxh64            # md5 / sha256 / xxh64 / xxh3
 workers: 4                 # delta 并行数: 1=串行 2/4/8=并行
 
 servers:
@@ -333,16 +375,28 @@ servers:
       - ".env"
 
 tasks:
+  # ── 示例1: 文件夹同步（部署网站）──
+  #   source 末尾有 \ → 把文件夹内容映射到 target
+  #   target 末尾有 / → 内容放入该目录下
   - name: web
     source: E:\projects\website\dist\
     target: myserver:/var/www/html/
     options:
-      delete: true           # 删除远程多余文件
+      delete: true           # 删除远端多余文件（仅文件夹同步有效）
       exclude:
         - "*.tmp"
         - ".DS_Store"
-      checksum: false        # true: 用校验和对比; false: 用时间+大小
-      flat: false            # true: 不套源文件夹名
+      checksum: false        # false: 比大小+时间  true: 比文件内容哈希
+      flat: false            # true: 不套源文件夹名，直接映射内容
+
+  # ── 示例2: 单文件同步（推送配置）──
+  #   source 无末尾斜杠 → 视为单文件
+  #   target 无末尾斜杠 → 精确覆盖该路径
+  # - name: nginx-config
+  #   source: E:\configs\nginx.conf
+  #   target: myserver:/etc/nginx/nginx.conf
+  #   options:
+  #     checksum: true       # 单文件建议开启，精确判断是否需要更新
 `
 
 func runTUI(cmd *cobra.Command, args []string) {
