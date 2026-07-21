@@ -192,11 +192,15 @@ func (w *mappingsWizard) handleStepType(key string) {
 	case "f":
 		w.isFile = false
 		w.step = stepName
-		w.inputBuf = ""
+		if w.editIdx < 0 {
+			w.inputBuf = ""
+		}
 	case "s":
 		w.isFile = true
 		w.step = stepName
-		w.inputBuf = ""
+		if w.editIdx < 0 {
+			w.inputBuf = ""
+		}
 	}
 }
 
@@ -217,6 +221,16 @@ func (w *mappingsWizard) handleStepSource(key string) {
 		w.wipTask.Source = strings.TrimSpace(w.inputBuf)
 		if w.isFile {
 			w.step = stepServer
+			if w.editIdx >= 0 && len(w.cfg.Servers) > 0 {
+				// Pre-select the server from existing target.
+				w.serverIdx = 0
+				for i, srv := range w.cfg.Servers {
+					if strings.HasPrefix(w.wipTask.Target, srv.Name+":") {
+						w.serverIdx = i
+						break
+					}
+				}
+			}
 		} else {
 			w.step = stepExclude
 		}
@@ -259,8 +273,18 @@ func (w *mappingsWizard) handleStepExclude(key string) {
 		}
 	case " ", "tab":
 		w.step = stepServer
-		w.serverIdx = 0
 		w.inputBuf = ""
+		if w.editIdx >= 0 && len(w.cfg.Servers) > 0 {
+			w.serverIdx = 0
+			for i, srv := range w.cfg.Servers {
+				if strings.HasPrefix(w.wipTask.Target, srv.Name+":") {
+					w.serverIdx = i
+					break
+				}
+			}
+		} else {
+			w.serverIdx = 0
+		}
 	default:
 		if len(key) == 1 && key[0] >= 32 && key[0] != 127 {
 			w.inputBuf += key
@@ -280,7 +304,13 @@ func (w *mappingsWizard) handleStepServer(key string) {
 		}
 	case "enter", " ":
 		w.step = stepRemote
-		w.inputBuf = ""
+		if w.editIdx >= 0 {
+			// Pre-fill the remote path portion (strip server name prefix).
+			prefix := w.cfg.Servers[w.serverIdx].Name + ":"
+			w.inputBuf = strings.TrimPrefix(w.wipTask.Target, prefix)
+		} else {
+			w.inputBuf = ""
+		}
 	}
 }
 
@@ -347,8 +377,20 @@ func (w *mappingsWizard) back() {
 		w.inputBuf = w.wipTask.Source
 	case stepServer:
 		w.inputBuf = ""
+	case stepRemote:
+		// Restore the path portion of the target for editing.
+		if w.editIdx >= 0 && w.serverIdx < len(w.cfg.Servers) {
+			prefix := w.cfg.Servers[w.serverIdx].Name + ":"
+			w.inputBuf = strings.TrimPrefix(w.wipTask.Target, prefix)
+		} else {
+			w.inputBuf = ""
+		}
 	case stepOptions:
-		w.inputBuf = ""
+		// Restore remote path so user can edit it when going back.
+		if w.editIdx >= 0 && w.serverIdx < len(w.cfg.Servers) {
+			prefix := w.cfg.Servers[w.serverIdx].Name + ":"
+			w.inputBuf = strings.TrimPrefix(w.wipTask.Target, prefix)
+		}
 	}
 	w.step = wizardBackMap[w.step]
 }
