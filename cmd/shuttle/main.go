@@ -315,7 +315,7 @@ Options
                        ⚠ Only applies to folder syncs.  Ignored for single-file tasks.
   exclude    []string  Glob patterns to skip — matching files/dirs are not transferred
                        Example: ["*.tmp", ".git/", "node_modules/"]
-  compress   bool      Enable SSH transport compression (default false; not recommended for LAN)
+  compress   bool      SSH transport compression (reserved, not yet implemented)
   checksum   bool      Use strong checksums to detect file changes (default false)
                        false: compare by mtime + file size (fast, 1-second precision)
                        true:  compare by full strong checksum (accurate, slower)

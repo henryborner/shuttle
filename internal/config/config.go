@@ -22,7 +22,7 @@ type Task struct {
 type Options struct {
 	Delete   bool     `yaml:"delete"`    // delete extra files on target / 删除目标多余文件
 	Exclude  []string `yaml:"exclude"`   // exclude file patterns / 排除文件模式
-	Compress bool     `yaml:"compress"`  // SSH compression / SSH 压缩
+	Compress bool     `yaml:"compress"`  // SSH compression (reserved, not yet implemented) / SSH 压缩（预留）
 	Checksum bool     `yaml:"checksum"`  // use checksum to detect changes / 用校验和判断差异
 	Watch    bool     `yaml:"watch"`     // watch mode (reserved) / 监听模式（预留）
 	Flat     bool     `yaml:"flat"`      // map content directly, no source folder wrapping / 直接映射不套源文件夹
