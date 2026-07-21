@@ -37,7 +37,12 @@ of files are sent across the network.
 
 Mappings between local paths and remote servers are defined in a
 syncd.yaml config file. A terminal UI (TUI) is also available for
-interactive management.`,
+interactive management.
+
+Getting started:
+  shuttle init                 create a config template
+  shuttle config --schema      full field reference with examples
+  shuttle push                 run all sync tasks`,
 		Version: versionStr,
 	}
 )
@@ -59,14 +64,22 @@ func main() {
 If a task name is given, only that task runs. Otherwise all tasks
 are executed in order. Each task connects to its target server via
 SSH, compares local and remote files, and transfers only the
-differences (delta).`,
+differences (delta).
+
+Quick reference:
+  Folder sync:  source ends with \ or /  →  contents mapped to target/
+  Single file:  source has no trailing slash  →  file placed at target path
+  Target /:     destination is a directory to map into
+  Target no /:  exact file path (single-file tasks)
+
+See 'shuttle config --schema' for the complete field reference.`,
 		Run: runPush,
 	}
 	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
 	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be transferred without making changes")
-	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print per-file transfer details")
-	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "number of parallel delta workers (0 uses config default, max 8)")
-	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, xxh64, or sha256 (overrides config)")
+	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print per-file transfer details and wire bytes sent")
+	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "parallel delta workers (0 uses config default, 1=serial, max 8)")
+	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, sha256, xxh64, or xxh3 (overrides config)")
 	rootCmd.AddCommand(pushCmd)
 
 	// tui
@@ -92,17 +105,18 @@ mapping management (add/edit/delete sync tasks), server management
 
 	// config
 	configCmd := &cobra.Command{
-		Use:   "config",
-		Short: "Print the full syncd.yaml configuration summary",
+		Use:   "config [--schema]",
+		Short: "Print the syncd.yaml config summary or field reference",
 		Long: `Load syncd.yaml and display a structured summary:
 servers (name, host, port, user, auth method) and tasks
 (name, source, target, enabled options).
 
-Use --schema to print a reference of all available config fields
-with descriptions and examples instead.`,
+With --schema: print a complete field reference including type
+info, descriptions, examples (folder + single file), and the
+list of available checksum algorithms.`,
 		Run: runConfig,
 	}
-	configCmd.Flags().BoolVar(&schemaFlag, "schema", false, "print config field reference instead of loaded config")
+	configCmd.Flags().BoolVar(&schemaFlag, "schema", false, "print full config field reference with examples")
 	rootCmd.AddCommand(configCmd)
 
 	// test
@@ -122,11 +136,15 @@ is reachable and the key or password is accepted.`,
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "init",
 		Short: "Write a syncd.yaml template to the current directory",
-		Long: `Create a new syncd.yaml file with commented example entries
-for servers and tasks. Safe to run — will not overwrite an
-existing file.
+		Long: `Create a new syncd.yaml file with commented examples for
+both folder syncs (website deployment) and single-file syncs
+(config push). Safe to run — will not overwrite an existing file.
 
-After init, use 'shuttle config --schema' to see field descriptions.`,
+Next steps:
+  Edit syncd.yaml to set your server and task
+  shuttle config --schema   view all available fields
+  shuttle test <server>     verify SSH connectivity
+  shuttle push --dry-run    preview what will be transferred`,
 		Run: runInit,
 	})
 
