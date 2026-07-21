@@ -35,8 +35,9 @@ type SyncStats struct {
 	ProtectedFiles int
 	DeltaFiles     int
 	TotalBytes     int64
+	DeltaBytes     int64 // bytes of files that went through delta transfer
 	SentBytes      int64
-	DeltaSaved     int64
+	DeltaSaved     int64 // bytes matched via delta (not transmitted)
 	Errors         []error
 }
 
@@ -196,6 +197,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		for range deltaJobs {
 			r := <-resultCh
 			stats.UpdatedFiles++
+			stats.DeltaBytes += r.job.lf.Size
 			stats.SentBytes += r.sent
 			stats.DeltaSaved += r.saved
 			if r.saved > 0 {
@@ -431,13 +433,17 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 
+	// Wrap stdin to count actual wire bytes (includes match instruction
+	// headers, not just literal payload).
+	wc := &writeCounter{w: stdin}
+
 	const batchSize = 256
 	batch := make([]delta.MatchResult, 0, batchSize)
 	flushBatch := func() error {
 		if len(batch) == 0 {
 			return nil
 		}
-		if err := delta.WireEncodeInstructions(stdin, batch); err != nil {
+		if err := delta.WireEncodeInstructions(wc, batch); err != nil {
 			return err
 		}
 		batch = batch[:0]
@@ -470,7 +476,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 		return info.Size, 0, fmt.Errorf("delta encode: %w", err)
 	}
 	// End-of-stream marker: count=0 tells receiver we're done.
-	if _, err := stdin.Write([]byte{0, 0, 0, 0}); err != nil {
+	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
 		stdin.Close()
 		<-stderrDone
 		_ = e.uploadFile(info, remotePath)
@@ -493,7 +499,19 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	e.transport.SetModTime(remotePath, info.ModTime)
 
 	savedBytes = info.Size - eng.LiteralBytes
-	return eng.LiteralBytes, savedBytes, nil
+	return wc.n, savedBytes, nil
+}
+
+// writeCounter wraps an io.Writer and counts bytes written.
+type writeCounter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *writeCounter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
 
 type localFileInfo struct {
