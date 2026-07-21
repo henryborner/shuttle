@@ -24,7 +24,7 @@ var (
 	algoName   string
 	schemaFlag bool
 
-	versionStr = "0.1.5.3"
+	versionStr = "0.1.5.4"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
 		Short: "Incremental file sync over SSH",
