@@ -67,12 +67,9 @@ SSH, compares local and remote files, and transfers only the
 differences (delta).
 
 Quick reference:
-  Folder sync:  source ends with \ or /  →  contents mapped to target/
-  Single file:  source has no trailing slash  →  file placed at target path
-  Target /:     destination is a directory to map into
-  Target no /:  exact file path (single-file tasks)
-
-See 'shuttle config --schema' for the complete field reference.`,
+  Shuttle detects folder vs file from the filesystem, not from trailing
+  slashes (unlike rsync).  Trailing \ or / is purely a visual convention.
+  See 'shuttle config --schema' for the complete field reference.`,
 		Run: runPush,
 	}
 	pushCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
@@ -287,23 +284,30 @@ Task
 ────────────────────────
   name       string    Task name
   source     string    Local source path.
+                       Shuttle detects folder vs file from the filesystem (os.Stat),
+                       not from a trailing slash.  The trailing \ or / is a visual
+                       convention — it has no effect on behavior.
                        ── Folder ──
-                         End with \ or / to sync the folder's CONTENTS into target.
+                         Source that exists as a directory on disk.
+                         Contents are mapped into target (respecting flat).
                          Examples:
-                           E:\projects\dist\       (Windows)
-                           /home/deploy/site/      (Linux/WSL)
+                           E:\projects\dist\
+                           /home/deploy/site/
                        ── Single file ──
-                         No trailing slash.  The file is synced directly.
+                         Source that exists as a regular file on disk.
+                         Synced directly to the target path.
                          Examples:
                            E:\configs\nginx.conf
                            /etc/myapp/config.yaml
+                       ⚠ Unlike rsync, shuttle ignores trailing slashes.
+                       E:\dist\ and E:\dist behave identically.
   target     string    Remote target, format: <server name>:<path>
+                       Shuttle joins target + relative path.  Trailing / has no
+                       special meaning — filepath.Join handles both forms the same.
                        ── Folder sync ──
-                         End with / to map source contents INTO the directory.
                          Example: myserver:/var/www/html/
                            source=E:\dist\  →  files go to /var/www/html/*
                        ── Single file sync ──
-                         No trailing / — the file is placed at exactly this path.
                          Example: myserver:/etc/nginx/nginx.conf
                            source=E:\configs\nginx.conf  →  overwrites /etc/nginx/nginx.conf
   options    Options   Sync options
