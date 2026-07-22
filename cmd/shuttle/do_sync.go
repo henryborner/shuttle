@@ -197,17 +197,18 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		if stats.DeltaFiles > 0 {
 			fmt.Printf(" delta:%d", stats.DeltaFiles)
 		}
-		fmt.Printf(" | %s", util.FormatBytes(stats.TotalBytes))
-		if stats.DeltaSaved > 0 {
-			pct := float64(0)
-			if stats.DeltaBytes > 0 {
-				pct = float64(stats.DeltaSaved) / float64(stats.DeltaBytes) * 100
+		fmt.Printf(" | %s total", util.FormatBytes(stats.TotalBytes))
+		if stats.SentBytes > 0 {
+			savedPct := float64(0)
+			if stats.TotalBytes > 0 {
+				savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
 			}
-			fmt.Printf("  matched:%s (%.0f%% of delta files)",
-				util.FormatBytes(stats.DeltaSaved), pct)
+			fmt.Printf("  sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
 		}
 		if verbose {
-			fmt.Printf(" | sent:%s", util.FormatBytes(stats.SentBytes))
+			if stats.DeltaSaved > 0 {
+				fmt.Printf("  delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
+			}
 		}
 		if len(stats.Errors) > 0 {
 			fmt.Printf(" | errors:%d", len(stats.Errors))

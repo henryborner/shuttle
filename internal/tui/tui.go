@@ -557,8 +557,8 @@ func (m *Model) startSync(task config.Task) {
 		}
 
 		savedPct := float64(0)
-		if stats.DeltaBytes > 0 {
-			savedPct = float64(stats.DeltaSaved) / float64(stats.DeltaBytes) * 100
+		if stats.TotalBytes > 0 && stats.SentBytes < stats.TotalBytes {
+			savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
 		}
 		m.syncChan <- syncMsg{
 			kind: "done", taskName: task.Name, savedPct: savedPct,
