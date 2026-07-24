@@ -92,7 +92,7 @@ tasks:
 | `--no-delta` | Force full upload, skip delta signature matching |
 | `--dry-run` | Preview only, no changes |
 | `-v` | Verbose output |
-| `-w N` | Parallel workers (0=config default, 1=serial) |
+| `-w N` | Parallel workers (0=config default, 1=serial, max 8) |
 | `--algo md5\|xxh64\|sha256\|xxh3` | Checksum algorithm |
 | `-c`, `--config <path>` | Config file path (default syncd.yaml) |
 

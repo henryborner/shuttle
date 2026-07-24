@@ -93,7 +93,7 @@ Delta matching can run in parallel for multiple files:
 | 1 | Serial. Single file at a time |
 | >=2 | Parallel. Multiple goroutines, bounded by semaphore |
 
-Default: 4 workers. Set via `-w` flag or `workers` config field.
+Default: 4 workers (max 8). Set via `-w` flag or `workers` config field.
 
 ## 7. Performance Notes
 
@@ -103,6 +103,6 @@ Default: 4 workers. Set via `-w` flag or `workers` config field.
 | 1 byte changed in 100 MB | ~6 KB + 1 block | ~99.99% |
 | Full rewrite | 100 MB + overhead | ~0% |
 
-- Rolling checksum: 77 GB/s (AVX2, Ryzen 9). See [go-rsync checksum docs](https://github.com/henryborner/go-rsync/blob/main/docs/checksum-engine.md)
+- Rolling checksum: 77 GB/s (AVX2, Ryzen 9)
 - mmap used for large file reading to avoid loading into memory
 - Signature cache on remote avoids recomputing checksums for unchanged files

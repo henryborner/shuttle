@@ -460,7 +460,7 @@ Top-Level Fields
 ------------------------
   version    string    Config version, currently "1.0"
   language   string    UI language: en / zh (default zh)
-  checksum   string    Default strong checksum: md5 / sha256 / xxh64 / xxh3 (default xxh64)
+  checksum   string    Default strong checksum: md5 / sha256 / xxh64 / xxh3 (default md5)
   workers    int       Parallel delta workers: 1=serial, 2/4/8=parallel (default 4)
   servers    []Server  Server connection list
   tasks      []Task    Sync task list

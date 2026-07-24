@@ -87,7 +87,7 @@ All sync operations continue normally — new files, updates (full upload), and 
 
 The agent caches block signatures at `~/.shuttle_cache/` on the remote server:
 
-- Cache key: `sha256_first8hex(filepath)_modTimeNano_size_blockSize_algo.sig`
+- Cache key: `sha256_first16hex(filePath)_modTimeNano_size_blockSize_algo.sig`
 - Atomic write (temp file + rename)
 - Stale cache entries are naturally invalidated by changing file metadata
 - Cache save failure is non-fatal — delta proceeds without caching for that file
