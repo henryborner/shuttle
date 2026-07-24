@@ -141,6 +141,19 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 	return nil
 }
 
+// connectSFTP creates and connects an SFTP client for the given server.
+func connectSFTP(srv *config.Server) (*transport.SFTPTransport, error) {
+	fmt.Printf("  Connecting %s@%s:%d...\n", srv.User, srv.Host, srv.Port)
+	sftp := transport.NewSFTP(transport.SFTPConfig{
+		Host: srv.Host, Port: srv.Port,
+		User: srv.User, KeyFile: srv.KeyFile, Pass: srv.Pass,
+	})
+	if err := sftp.Connect(); err != nil {
+		return nil, err
+	}
+	return sftp, nil
+}
+
 // doSync 执行同步任务
 func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoName string, noDelta bool) {
 	cfg, err := config.Load(cfgPath)
@@ -206,13 +219,8 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		}
 
 		// 连接
-		fmt.Printf("  Connecting %s@%s:%d...\n", server.User, server.Host, server.Port)
-		sftp := transport.NewSFTP(transport.SFTPConfig{
-			Host: server.Host, Port: server.Port,
-			User: server.User, KeyFile: server.KeyFile, Pass: server.Pass,
-		})
-
-		if err := sftp.Connect(); err != nil {
+		sftp, err := connectSFTP(server)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "  Connect failed: %v\n", err)
 			continue
 		}
@@ -348,13 +356,9 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	}
 
 	fmt.Printf("Ad-hoc sync\n  Source: %s (%s)\n  Target: %s\n", source, srcType, target)
-	fmt.Printf("  Connecting %s@%s:%d...\n", server.User, server.Host, server.Port)
 
-	sftp := transport.NewSFTP(transport.SFTPConfig{
-		Host: server.Host, Port: server.Port,
-		User: server.User, KeyFile: server.KeyFile, Pass: server.Pass,
-	})
-	if err := sftp.Connect(); err != nil {
+	sftp, err := connectSFTP(server)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "  Connect failed: %v\n", err)
 		os.Exit(1)
 	}

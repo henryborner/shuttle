@@ -120,7 +120,7 @@ type Model struct {
 	sp            syncProgress
 	syncErr       string
 	syncChan      chan syncMsg
-	quitCh        chan struct{} // closed when TUI is quitting
+	quitCh        chan struct{}       // closed when TUI is quitting
 	deleteConfirm *deleteConfirmState // 多级 delete 确认
 }
 
