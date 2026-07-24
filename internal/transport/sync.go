@@ -21,7 +21,7 @@ type SyncOptions struct {
 	Protect  []string // protect patterns: matching remote paths are never overwritten/deleted / 保护模式：匹配远端路径绝不覆盖/删除
 	Checksum bool
 	DryRun   bool
-	SkipDots bool // skip files/dirs starting with "." (default true for safety) / 跳过.开头的文件
+	ShowDots bool // show files/dirs starting with "." (default false) / 显示.开头的隐藏文件
 	Workers  int  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
 	Flat     bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
 	NoDelta  bool // force full upload, skip delta signature matching / 强制全量上传，跳过 delta 签名匹配
@@ -57,7 +57,7 @@ func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 // Sync 执行同步。
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	stats := &SyncStats{}
-	localFiles, err := ScanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
+	localFiles, err := ScanLocalFiles(opts.Source, opts.Exclude, !opts.ShowDots)
 	if err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
