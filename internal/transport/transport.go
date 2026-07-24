@@ -302,6 +302,9 @@ func (t *SFTPTransport) Stat(path string) (FileInfo, error) {
 
 // Exec runs a command on the remote host via SSH.
 // Callers MUST close both stdout and stderr to release the SSH session.
+//
+// WARNING: this method executes arbitrary commands over SSH. Only call with
+// hardcoded or strictly validated command strings — never with user input.
 func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	if t.sshCli == nil {
 		return nil, nil, nil, fmt.Errorf("not connected")
