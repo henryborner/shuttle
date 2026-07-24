@@ -4,6 +4,8 @@
 
 **Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
+**Why Shuttle:** Single binary, zero dependencies, double-click to launch. Agent optional — works without it, auto falls back to full upload. Delta algorithm lives in the standalone [go-rsync](https://github.com/henryborner/go-rsync) library — one thing, done well. MIT licensed, pure Go with hand-tuned SIMD assembly.
+
 ```powershell
 shuttle                    # double-click to launch TUI
 shuttle push web           # sync a task
