@@ -624,6 +624,11 @@ tasks:
   #     checksum: true       # 单文件建议开启，精确判断是否需要更新
 `
 
+// runTUI launches the interactive terminal UI.
+// On first launch (no config file), generates a default syncd.yaml and loads it.
+// Exits on config write/load errors to avoid passing nil config to the TUI.
+// runTUI 启动交互式终端界面。首次启动时自动生成默认配置文件并加载。
+// 配置文件写入或加载失败时退出，避免将 nil config 传入 TUI。
 func runTUI(cmd *cobra.Command, args []string) {
 	if cfgPath == "" {
 		cfgPath = "syncd.yaml"

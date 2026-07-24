@@ -674,6 +674,9 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 	return files, err
 }
 
+// MatchProtect checks whether a path matches any protect pattern.
+// Patterns ending with "/" trigger recursive prefix matching (protects entire directory tree);
+// otherwise glob matching is used (basename + full path).
 // MatchProtect 检查给定路径是否匹配任一保护模式
 // 以 "/" 结尾的 pattern 做前缀匹配（保护整个目录树），否则做 glob 匹配（basename + 全路径）。
 func MatchProtect(path string, patterns []string) bool {

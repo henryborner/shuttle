@@ -211,6 +211,8 @@ func Remove(srv config.Server, found *FindResult) error {
 }
 
 // dial opens an SSH connection to the server.
+// dial opens an SSH connection to the server with the given timeout.
+// dial 以指定的超时时间建立到服务器的 SSH 连接。
 func dial(srv config.Server, timeout time.Duration) (*ssh.Client, error) {
 	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
 	if len(authMethods) == 0 {
@@ -227,7 +229,9 @@ func dial(srv config.Server, timeout time.Duration) (*ssh.Client, error) {
 	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), port), cfg)
 }
 
-// findLocalBinary locates shuttle_linux next to the current executable.
+// findLocalBinary locates shuttle_linux next to the current executable,
+// falling back to the current working directory.
+// findLocalBinary 定位与当前可执行文件同目录的 shuttle_linux，其次尝试当前工作目录。
 func findLocalBinary() (string, error) {
 	exePath, err := os.Executable()
 	if err == nil {
@@ -244,6 +248,9 @@ func findLocalBinary() (string, error) {
 }
 
 // runRemoteCmd executes a command on the remote server and returns stdout.
+// runRemoteCmd executes a command on the remote server via an existing SSH client
+// and returns its stdout.
+// runRemoteCmd 通过已有 SSH 客户端在远端执行命令并返回 stdout。
 func runRemoteCmd(client *ssh.Client, cmd string) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {

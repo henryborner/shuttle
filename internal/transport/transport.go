@@ -171,6 +171,7 @@ func (t *SFTPTransport) ListDir(path string) ([]FileInfo, error) {
 // skipDirs lists directory base names to skip during recursive walk.
 // Only applied at the first level under the target root to avoid hiding
 // user project directories with the same names (e.g. dev/, run/).
+// skipDirs 递归遍历时跳过的系统目录名（仅作用于同步目标根目录下的第一层）。
 var skipDirs = map[string]bool{
 	"proc": true, "sys": true, "dev": true, "run": true,
 	"snap": true, "lost+found": true,
@@ -307,6 +308,8 @@ func (t *SFTPTransport) Stat(path string) (FileInfo, error) {
 //
 // WARNING: this method executes arbitrary commands over SSH. Only call with
 // hardcoded or strictly validated command strings — never with user input.
+// Exec 在远程主机上通过 SSH 执行命令。调用者必须关闭 stdout 和 stderr 以释放会话。
+// 警告：此方法可执行任意 SSH 命令，仅用于硬编码或严格校验的命令字符串，绝不接受用户输入。
 func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	if t.sshCli == nil {
 		return nil, nil, nil, fmt.Errorf("not connected")
@@ -347,6 +350,7 @@ type sessionReadCloser struct {
 
 func (s *sessionReadCloser) Close() error {
 	// Wait returns the remote command's exit status; log non-zero exits for diagnostics.
+	// Wait 返回远程命令的退出状态；记录非零退出码用于诊断。
 	if err := s.session.Wait(); err != nil {
 		fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", err)
 	}

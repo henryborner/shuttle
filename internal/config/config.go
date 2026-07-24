@@ -73,6 +73,9 @@ func (c *Config) Save(path string) error {
 	return os.WriteFile(path, data, 0600)
 }
 
+// Validate checks the configuration for required fields and consistency.
+// Validates server name/host/user and task name/source/target/server references.
+// Validate 检查配置的必填字段和一致性（server 的 name/host/user + task 的 name/source/target/引用）。
 func (c *Config) Validate() error {
 	for i, s := range c.Servers {
 		if s.Name == "" {
