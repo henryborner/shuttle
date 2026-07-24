@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -709,46 +708,17 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 	}
 }
 
-// scanLocal 扫描本地文件（复用 sync.go 逻辑）
+// scanLocal 扫描本地文件（复用 transport 包逻辑）
 func scanLocal(root string, excludes []string, skipDots bool) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		relPath, _ := filepath.Rel(root, path)
-		for _, p := range excludes {
-			pat := strings.TrimRight(p, "/")
-			if ok, _ := filepath.Match(pat, filepath.Base(path)); ok {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if ok, _ := filepath.Match(pat, relPath); ok {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-		}
-		if skipDots && strings.HasPrefix(filepath.Base(path), ".") && path != root {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.IsDir() {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if len(files) == 0 && err == nil {
-		if info, stErr := os.Stat(root); stErr == nil && !info.IsDir() {
-			files = append(files, root)
-		}
+	files, err := transport.ScanLocalFiles(root, excludes, skipDots)
+	if err != nil {
+		return nil, err
 	}
-	return files, err
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.Path
+	}
+	return paths, nil
 }
 
 // highRiskExts 高危文件扩展名，优先显示在删除清单前部

@@ -46,9 +46,9 @@ func TestScanLocalFiles_Basic(t *testing.T) {
 	createDir(t, filepath.Join(dir, "sub"))
 	createFile(t, filepath.Join(dir, "sub", "c.txt"), "nested")
 
-	files, err := scanLocalFiles(dir, nil, false)
+	files, err := ScanLocalFiles(dir, nil, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	if len(files) != 3 {
@@ -74,9 +74,9 @@ func TestScanLocalFiles_SkipDots(t *testing.T) {
 	createDir(t, filepath.Join(dir, ".secret"))
 	createFile(t, filepath.Join(dir, ".secret", "nested.txt"), "c")
 
-	files, err := scanLocalFiles(dir, nil, true)
+	files, err := ScanLocalFiles(dir, nil, true)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	names := fileNames(dir, files)
@@ -93,9 +93,9 @@ func TestScanLocalFiles_ShowDots(t *testing.T) {
 	createDir(t, filepath.Join(dir, ".git"))
 	createFile(t, filepath.Join(dir, ".git", "config"), "repo")
 
-	files, err := scanLocalFiles(dir, nil, false)
+	files, err := ScanLocalFiles(dir, nil, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	names := fileNames(dir, files)
@@ -113,9 +113,9 @@ func TestScanLocalFiles_Exclude(t *testing.T) {
 	createDir(t, filepath.Join(dir, "vendor"))
 	createFile(t, filepath.Join(dir, "vendor", "lib.go"), "lib")
 
-	files, err := scanLocalFiles(dir, []string{"*_test.go", "vendor/"}, false)
+	files, err := ScanLocalFiles(dir, []string{"*_test.go", "vendor/"}, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	names := fileNames(dir, files)
@@ -129,9 +129,9 @@ func TestScanLocalFiles_SingleFile(t *testing.T) {
 	path := filepath.Join(dir, "single.txt")
 	createFile(t, path, "content")
 
-	files, err := scanLocalFiles(path, nil, false)
+	files, err := ScanLocalFiles(path, nil, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	if len(files) != 1 {
@@ -148,9 +148,9 @@ func TestScanLocalFiles_SingleFile(t *testing.T) {
 func TestScanLocalFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 
-	files, err := scanLocalFiles(dir, nil, false)
+	files, err := ScanLocalFiles(dir, nil, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	if len(files) != 0 {
@@ -167,9 +167,9 @@ func TestScanLocalFiles_ExcludeBasenameMatch(t *testing.T) {
 	createFile(t, filepath.Join(dir, "logs", "access.log"), "access")
 
 	// "*.log" should match both files via basename
-	files, err := scanLocalFiles(dir, []string{"*.log"}, false)
+	files, err := ScanLocalFiles(dir, []string{"*.log"}, false)
 	if err != nil {
-		t.Fatalf("scanLocalFiles: %v", err)
+		t.Fatalf("ScanLocalFiles: %v", err)
 	}
 
 	names := fileNames(dir, files)
@@ -195,7 +195,7 @@ func createDir(t *testing.T, path string) {
 	}
 }
 
-func fileNames(root string, files []localFileInfo) []string {
+func fileNames(root string, files []LocalFileInfo) []string {
 	names := make([]string, len(files))
 	for i, f := range files {
 		rel, err := filepath.Rel(root, f.Path)

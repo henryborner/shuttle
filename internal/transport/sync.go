@@ -57,7 +57,7 @@ func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 // Sync 执行同步。
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	stats := &SyncStats{}
-	localFiles, err := scanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
+	localFiles, err := ScanLocalFiles(opts.Source, opts.Exclude, opts.SkipDots)
 	if err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
@@ -98,7 +98,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	// 第一遍：新文件（串行，共用 SFTP 连接）。
 	// 同时收集需要 delta 的文件。
 	type deltaJob struct {
-		lf         localFileInfo
+		lf         LocalFileInfo
 		relPath    string
 		remotePath string
 	}
@@ -361,7 +361,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	return stats, nil
 }
 
-func (e *SyncEngine) uploadFile(info localFileInfo, remotePath string) error {
+func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
 	// Ensure remote parent directory exists.
 	// 确保远程父目录存在。
 	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
@@ -411,7 +411,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
-func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
+func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	algo := delta.GetDefault()
 	cmd := fmt.Sprintf("shuttle receive --algo %s '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	if checksum {
@@ -547,7 +547,7 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 // fallbackUpload attempts a full upload after delta fails.
 // If the full upload succeeds, it prints a warning to stderr and returns nil
 // (the file was synced, just not via delta). If it also fails, returns the error.
-func (e *SyncEngine) fallbackUpload(info localFileInfo, remotePath, reason string) error {
+func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason string) error {
 	if err := e.uploadFile(info, remotePath); err != nil {
 		return fmt.Errorf("delta fallback upload failed: %w", err)
 	}
@@ -567,15 +567,15 @@ func (c *writeCounter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-type localFileInfo struct {
+type LocalFileInfo struct {
 	Path    string
 	Size    int64
 	ModTime time.Time
 	IsDir   bool
 }
 
-func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileInfo, error) {
-	var files []localFileInfo
+func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileInfo, error) {
+	var files []LocalFileInfo
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -610,7 +610,7 @@ func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileI
 		if err != nil {
 			return err
 		}
-		files = append(files, localFileInfo{
+		files = append(files, LocalFileInfo{
 			Path:    path,
 			Size:    info.Size(),
 			ModTime: info.ModTime(),
@@ -634,7 +634,7 @@ func scanLocalFiles(root string, excludes []string, skipDots bool) ([]localFileI
 			}
 			// Re-check skipDots
 			if !excluded && (!skipDots || !strings.HasPrefix(base, ".")) {
-				files = append(files, localFileInfo{
+				files = append(files, LocalFileInfo{
 					Path: root, Size: info.Size(), ModTime: info.ModTime(),
 				})
 			}
