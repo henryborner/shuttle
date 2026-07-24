@@ -51,7 +51,9 @@ interactive management.
 Getting started:
   shuttle init                 create a config template
   shuttle config --schema      full field reference with examples
-  shuttle push                 run all sync tasks`,
+  shuttle push                 sync tasks (config or ad-hoc --source/--target)
+  shuttle deploy <server>      deploy the remote agent
+  shuttle agent status <server> check agent installation`,
 		Version: versionStr,
 	}
 )
@@ -67,13 +69,18 @@ func main() {
 	// push
 	pushCmd := &cobra.Command{
 		Use:   "push [task name]",
-		Short: "Execute one or all sync tasks",
-		Long: `Run sync tasks defined in syncd.yaml.
+		Short: "Execute sync tasks (config or ad-hoc)",
+		Long: `Run sync tasks.
 
-If a task name is given, only that task runs. Otherwise all tasks
-are executed in order. Each task connects to its target server via
-SSH, compares local and remote files, and transfers only the
-differences (delta).
+Config mode (default): tasks and servers are defined in syncd.yaml.
+  shuttle push              sync all tasks
+  shuttle push web          sync only the "web" task
+
+Ad-hoc mode: bypass config with --source/--target.
+  shuttle push --source ./dist --target myserver:/var/www --delete
+
+Each task connects to its target server via SSH, compares local and
+remote files, and transfers only the differences (delta).
 
 Quick reference:
   Shuttle detects folder vs file from the filesystem, not from trailing
@@ -213,6 +220,7 @@ Next steps:
   Edit syncd.yaml to set your server and task
   shuttle config --schema   view all available fields
   shuttle test <server>     verify SSH connectivity
+  shuttle deploy <server>   deploy remote agent
   shuttle push --dry-run    preview what will be transferred`,
 		Run: runInit,
 	})
