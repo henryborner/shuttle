@@ -33,7 +33,7 @@ var (
 	adHocExclude  []string
 	noDelta       bool
 
-	versionStr = "0.1.5.9"
+	versionStr = "0.1.5.10"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
 		Short: "Incremental file sync over SSH",
