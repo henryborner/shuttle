@@ -4,7 +4,7 @@ package util
 import "fmt"
 
 // Version is the current Shuttle version string.
-const Version = "0.1.5.12"
+const Version = "0.1.5.13"
 
 // FormatBytes formats a byte count as a human-readable string using binary
 // prefixes (e.g. "1.5 MiB", base-1024).
