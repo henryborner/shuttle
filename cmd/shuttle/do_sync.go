@@ -175,6 +175,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 	} else if cfg.Checksum != "" {
 		if err := delta.SetDefault(cfg.Checksum); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: invalid checksum '%s' in config: %v\n", cfg.Checksum, err)
+			fmt.Fprintf(os.Stderr, "  Using default: %s (fix the checksum field in syncd.yaml)\n", delta.GetDefault())
 		}
 	}
 
@@ -368,6 +369,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	} else if cfg.Checksum != "" {
 		if err := delta.SetDefault(cfg.Checksum); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: invalid checksum '%s' in config: %v\n", cfg.Checksum, err)
+			fmt.Fprintf(os.Stderr, "  Using default: %s (fix the checksum field in syncd.yaml)\n", delta.GetDefault())
 		}
 	}
 	if workers <= 0 {

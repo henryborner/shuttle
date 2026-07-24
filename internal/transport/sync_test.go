@@ -25,6 +25,18 @@ func TestMatchProtect(t *testing.T) {
 		{"multiple patterns hit", "/var/www/data.db", []string{"*.log", "*.db", "*.tmp"}, true},
 		{"multiple patterns miss", "/var/www/data.txt", []string{"*.log", "*.db"}, false},
 		{"windows path", `C:\data\config.yaml`, []string{"config.yaml"}, true},
+		// trailing "/" = protect entire directory tree (relative + absolute)
+		{"dir protect: file inside (relative)", "secrets/token.pem", []string{"secrets/"}, true},
+		{"dir protect: nested file (relative)", "secrets/db/creds.txt", []string{"secrets/"}, true},
+		{"dir protect: dir itself (relative)", "secrets", []string{"secrets/"}, true},
+		{"dir protect: file inside (absolute)", "/var/secrets/token.pem", []string{"secrets/"}, true},
+		{"dir protect: nested file (absolute)", "/var/secrets/db/creds.txt", []string{"secrets/"}, true},
+		{"dir protect: dir itself (absolute)", "/var/secrets", []string{"secrets/"}, true},
+		{"dir protect: not in dir", "/var/public/data.txt", []string{"secrets/"}, false},
+		{"dir protect: similar prefix", "/var/secrets_backup/data.txt", []string{"secrets/"}, false},
+		{"dir protect: absolute pattern", "/var/secrets/token.pem", []string{"/var/secrets/"}, true},
+		// trailing "/" still works alongside glob patterns
+		{"mixed: dir + glob", "/var/secrets/token.pem", []string{"secrets/", "*.db"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

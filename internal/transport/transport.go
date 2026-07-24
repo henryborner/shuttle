@@ -4,6 +4,7 @@ package transport
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -205,6 +206,7 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 		// Deeper directories with the same names (e.g. project/dev/) are NOT skipped.
 		depth := strings.Count(strings.TrimPrefix(path, rootSlash), "/")
 		if info.IsDir() && depth == 1 && skipDirs[info.Name()] {
+			fmt.Fprintf(os.Stderr, "  [WARN] Skipping system directory: %s (not scanned, not deleted)\n", path)
 			walker.SkipDir()
 			continue
 		}
@@ -344,7 +346,9 @@ type sessionReadCloser struct {
 }
 
 func (s *sessionReadCloser) Close() error {
-	// Wait + Close the session; safe to call multiple times.
-	_ = s.session.Wait()
+	// Wait returns the remote command's exit status; log non-zero exits for diagnostics.
+	if err := s.session.Wait(); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", err)
+	}
 	return s.session.Close()
 }

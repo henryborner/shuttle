@@ -658,7 +658,7 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 }
 
 // MatchProtect 检查给定路径是否匹配任一保护模式
-// 同时匹配 basename 和完整路径，目录匹配时整个目录被保护
+// 以 "/" 结尾的 pattern 做前缀匹配（保护整个目录树），否则做 glob 匹配（basename + 全路径）。
 func MatchProtect(path string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return false
@@ -666,11 +666,28 @@ func MatchProtect(path string, patterns []string) bool {
 	slashPath := filepath.ToSlash(path)
 	base := filepath.Base(path)
 	for _, p := range patterns {
-		pat := strings.TrimRight(p, "/")
-		if ok, _ := filepath.Match(pat, base); ok {
+		// trailing "/" → prefix match: protect entire directory tree
+		// 以 "/" 结尾 → 前缀匹配：保护整个目录树
+		if strings.HasSuffix(p, "/") {
+			dir := strings.TrimRight(p, "/")
+			// file directly under the dir: "secrets/token.pem"
+			if strings.HasPrefix(slashPath, p) {
+				return true
+			}
+			// file deep in tree: "/var/secrets/db/creds.txt"
+			if strings.Contains(slashPath, "/"+p) {
+				return true
+			}
+			// the directory itself: "secrets" or "/var/secrets"
+			if slashPath == dir || strings.HasSuffix(slashPath, "/"+dir) {
+				return true
+			}
+			continue
+		}
+		if ok, _ := filepath.Match(p, base); ok {
 			return true
 		}
-		if ok, _ := filepath.Match(pat, slashPath); ok {
+		if ok, _ := filepath.Match(p, slashPath); ok {
 			return true
 		}
 	}

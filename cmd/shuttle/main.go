@@ -526,6 +526,14 @@ Options
   show_dots  bool      Transfer hidden files/directories (default false)
                        Hidden files are those whose name starts with a dot (.)
 
+Delete Safety Notes
+------------------------
+  Shuttle never lists or deletes files under top-level system directories:
+    /proc, /sys, /dev, /run, /snap, /lost+found.
+  This only applies to directories directly under the sync target root —
+  user project directories with the same names (e.g. src/dev/) are NOT skipped.
+  Recursive walk stops at 100,000 files to prevent memory exhaustion.
+
 Strong Checksum Algorithms
 ------------------------
   xxh64      64-bit xxHash (default), fastest -- good for LAN/SSD
@@ -624,9 +632,16 @@ func runTUI(cmd *cobra.Command, args []string) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// First launch: generate default config then enter TUI
-			os.WriteFile(cfgPath, []byte(initTemplate), 0644)
+			if err := os.WriteFile(cfgPath, []byte(initTemplate), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create %s: %v\n", cfgPath, err)
+				os.Exit(1)
+			}
 			fmt.Println("Created " + cfgPath + " -- editing in TUI...")
-			cfg, _ = config.Load(cfgPath)
+			cfg, err = config.Load(cfgPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Config load failed after init: %v\n", err)
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)
 			os.Exit(1)

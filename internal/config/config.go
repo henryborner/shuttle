@@ -74,6 +74,17 @@ func (c *Config) Save(path string) error {
 }
 
 func (c *Config) Validate() error {
+	for i, s := range c.Servers {
+		if s.Name == "" {
+			return fmt.Errorf("server #%d missing name / 服务器 #%d 缺少名称", i+1, i+1)
+		}
+		if s.Host == "" {
+			return fmt.Errorf("server '%s' missing host / 服务器 '%s' 缺少 host", s.Name, s.Name)
+		}
+		if s.User == "" {
+			return fmt.Errorf("server '%s' missing user / 服务器 '%s' 缺少 user", s.Name, s.Name)
+		}
+	}
 	for i, t := range c.Tasks {
 		if t.Name == "" {
 			return fmt.Errorf("task #%d missing name / 任务 #%d 缺少名称", i+1, i+1)

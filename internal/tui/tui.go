@@ -124,6 +124,9 @@ type Model struct {
 }
 
 func New(cfg *config.Config, cfgPath string) *Model {
+	if cfg == nil {
+		cfg = &config.Config{} // fallback empty config, prevents nil deref below
+	}
 	// 从配置加载语言
 	if cfg.Language == "zh" {
 		i18n.SetLang(i18n.ZH)

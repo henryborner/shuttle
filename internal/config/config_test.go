@@ -131,10 +131,25 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid",
 			cfg: &Config{
-				Servers: []Server{{Name: "srv", Host: "1.2.3.4"}},
+				Servers: []Server{{Name: "srv", Host: "1.2.3.4", User: "deploy"}},
 				Tasks:   []Task{{Name: "t", Source: "/s", Target: "srv:/t"}},
 			},
 			wantErr: false,
+		},
+		{
+			name:    "server missing name",
+			cfg:     &Config{Servers: []Server{{Host: "1.2.3.4", User: "deploy"}}},
+			wantErr: true,
+		},
+		{
+			name:    "server missing host",
+			cfg:     &Config{Servers: []Server{{Name: "s", User: "deploy"}}},
+			wantErr: true,
+		},
+		{
+			name:    "server missing user",
+			cfg:     &Config{Servers: []Server{{Name: "s", Host: "1.2.3.4"}}},
+			wantErr: true,
 		},
 		{
 			name:    "missing name",
