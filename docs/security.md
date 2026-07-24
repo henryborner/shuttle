@@ -45,7 +45,7 @@ All paths embedded in remote shell commands are escaped to prevent injection.
 ```go
 func shellPath(p string) string {
     if strings.Contains(p, "$") {
-        return p  // needs shell expansion, assume safe
+        return p
     }
     return "'" + strings.ReplaceAll(p, "'", "'\\''") + "'"
 }
@@ -61,10 +61,10 @@ func shellPath(p string) string {
 The `shuttle receive` command uses single-quote escaping for both the algorithm and path:
 
 ```go
-fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, escapedPath)
+fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 ```
 
-Inside single quotes, no shell metacharacters (`$`, `` ` ``, `(`, `)`, `;`, `|`) are interpreted. Only the single quote itself needs escaping via `'\''`.
+Both `algo` and `remotePath` are placed inside single quotes. `algo` values (md5, sha256, xxh64, xxh3) contain no special characters. `remotePath` has embedded single quotes escaped via `'\''`. Inside single quotes, no shell metacharacters are interpreted.
 
 ## 3. Protect Patterns
 
@@ -89,10 +89,10 @@ Protected files are:
 If the source directory contains no files and `delete: true` is set, shuttle refuses to sync:
 
 ```
-safety: source contains no files and delete is enabled
+safety: source contains no files and delete is enabled — refusing to wipe remote target; set delete:false or ensure source is not empty (check skipDots/exclude settings)
 ```
 
-This prevents accidental remote wipes when the source is empty (e.g., misconfigured path, or `show_dots: false` hiding all files).
+This prevents accidental remote wipes when the source is empty.
 
 ## 5. Host Key Verification
 

@@ -42,7 +42,7 @@ The same source tree builds both the Windows client (`shuttle.exe`) and the Linu
 
 | Priority | Path | Requirements |
 |----------|------|-------------|
-| 1 | `/usr/local/bin/shuttle` | `sudo` (write to system path) |
+| 1 | `/usr/local/bin/shuttle` | Write permission to `/usr/local/bin` |
 | 2 | `$HOME/shuttle` | None (adds `$HOME` to PATH via `.bashrc`) |
 
 3. Runs `identify` to verify the binary is the real Shuttle agent
@@ -87,7 +87,7 @@ All sync operations continue normally — new files, updates (full upload), and 
 
 The agent caches block signatures at `~/.shuttle_cache/` on the remote server:
 
-- Cache key: SHA-256 hash of (file path + mod time + size + block size + algorithm)
+- Cache key: `sha256_first8hex(filepath)_modTimeNano_size_blockSize_algo.sig`
 - Atomic write (temp file + rename)
 - Stale cache entries are naturally invalidated by changing file metadata
 - Cache save failure is non-fatal — delta proceeds without caching for that file

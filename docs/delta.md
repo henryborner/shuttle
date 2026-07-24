@@ -56,9 +56,9 @@ Block size is computed by `go-rsync` based on target signature list density (~10
 
 | Algorithm | Bits | Speed | Use Case |
 |-----------|------|-------|----------|
-| xxh64 | 64 | Fastest | Default. Good collision resistance for most cases |
+| md5 | 128 | Medium | Default. Good balance of speed and collision resistance |
+| xxh64 | 64 | Fastest | Best for throughput-sensitive workloads |
 | xxh3 | 128 | Fast | Stronger than xxh64, similar speed |
-| md5 | 128 | Medium | Legacy compatibility |
 | sha256 | 256 | Slowest | Maximum integrity guarantee |
 
 All algorithms have SIMD-accelerated assembly paths on amd64 (AVX2 for md5, SHA-NI for sha256).
@@ -91,7 +91,7 @@ Delta matching can run in parallel for multiple files:
 | Workers | Behavior |
 |---------|----------|
 | 1 | Serial. Single file at a time |
-| 2-8 | Parallel. Multiple goroutines, bounded by semaphore |
+| >=2 | Parallel. Multiple goroutines, bounded by semaphore |
 
 Default: 4 workers. Set via `-w` flag or `workers` config field.
 
