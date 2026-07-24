@@ -160,10 +160,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			if needUpd || opts.Checksum {
 				if opts.NoDelta && !opts.DryRun {
 					// No delta — upload whole file directly
-					var fe error
-					if !opts.DryRun {
-						fe = e.uploadFile(lf, remotePath)
-					}
+					fe := e.uploadFile(lf, remotePath)
 					stats.UpdatedFiles++
 					stats.SentBytes += lf.Size
 					e.hook.OnFileDone(FileEvent{

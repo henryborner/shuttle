@@ -269,7 +269,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 		cfg.Language, cfg.Checksum, cfg.Workers)
 	fmt.Printf("Servers: %d  |  Tasks: %d\n", len(cfg.Servers), len(cfg.Tasks))
 	fmt.Println()
-	fmt.Println("── Servers ──")
+	fmt.Println("-- Servers --")
 	for _, s := range cfg.Servers {
 		auth := "key"
 		if s.Pass != "" {
@@ -278,7 +278,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 		fmt.Printf("  %-15s %s@%s:%d  (%s)\n", s.Name, s.User, s.Host, s.Port, auth)
 	}
 	fmt.Println()
-	fmt.Println("── Tasks ──")
+	fmt.Println("-- Tasks --")
 	for _, t := range cfg.Tasks {
 		flags := ""
 		if t.Options.Delete {
@@ -331,7 +331,7 @@ func runTest(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("OK — connected successfully")
+	fmt.Println("OK -- connected successfully")
 	fmt.Println("Run 'shuttle agent status " + serverName + "' to check agent.")
 }
 
@@ -354,7 +354,7 @@ func runDeploy(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Manual: scp shuttle_linux %s@%s:~/ ; ssh %s@%s chmod +x ~/shuttle\n", s.User, s.Host, s.User, s.Host)
 		os.Exit(1)
 	}
-	fmt.Printf("OK — installed to %s (%s)\n", path, version)
+	fmt.Printf("OK -- installed to %s (%s)\n", path, version)
 }
 
 func runAgentStatus(cmd *cobra.Command, args []string) {
@@ -405,7 +405,7 @@ func runAgentRemove(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	if r == nil {
-		fmt.Println("No shuttle agent found — nothing to remove.")
+		fmt.Println("No shuttle agent found -- nothing to remove.")
 		return
 	}
 	fmt.Printf("Found: %s  (%s)\n", r.Path, r.Version)
@@ -415,7 +415,7 @@ func runAgentRemove(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("OK — removed %s\n", r.Path)
+	fmt.Printf("OK -- removed %s\n", r.Path)
 }
 
 func runSchema() {

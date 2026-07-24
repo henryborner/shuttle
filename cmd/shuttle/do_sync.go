@@ -236,36 +236,44 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 			continue
 		}
 
-		prefix := ""
-		if dryRun {
-			prefix = "[DRY RUN] "
-		}
-		if verbose {
-			fmt.Printf("  %sDone", prefix)
-			if stats.SentBytes > 0 {
-				savedPct := float64(0)
-				if stats.TotalBytes > 0 {
-					savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
-				}
-				fmt.Printf(" | sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
-			}
-			if stats.DeltaSaved > 0 {
-				fmt.Printf(" | delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
-			}
-			if len(stats.Errors) > 0 {
-				fmt.Printf(" | errors:%d", len(stats.Errors))
-				for _, e := range stats.Errors {
-					fmt.Printf("\n    - %v", e)
-				}
-			}
-			fmt.Println()
-		} else if len(stats.Errors) > 0 {
-			fmt.Printf("  %sDone | errors:%d\n", prefix, len(stats.Errors))
-		}
+		printVerboseStats(stats, dryRun, verbose)
 	}
 
 	if dryRun {
-		fmt.Println("Dry run complete — use 'shuttle push' to sync")
+		fmt.Println("Dry run complete -- use 'shuttle push' to sync")
+	}
+}
+
+// printVerboseStats prints transfer statistics in verbose mode.
+func printVerboseStats(stats *transport.SyncStats, dryRun, verbose bool) {
+	if !verbose && len(stats.Errors) == 0 {
+		return
+	}
+	prefix := ""
+	if dryRun {
+		prefix = "[DRY RUN] "
+	}
+	if verbose {
+		fmt.Printf("  %sDone", prefix)
+		if stats.SentBytes > 0 {
+			savedPct := float64(0)
+			if stats.TotalBytes > 0 {
+				savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
+			}
+			fmt.Printf(" | sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
+		}
+		if stats.DeltaSaved > 0 {
+			fmt.Printf(" | delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
+		}
+		if len(stats.Errors) > 0 {
+			fmt.Printf(" | errors:%d", len(stats.Errors))
+			for _, e := range stats.Errors {
+				fmt.Printf("\n    - %v", e)
+			}
+		}
+		fmt.Println()
+	} else if len(stats.Errors) > 0 {
+		fmt.Printf("  %sDone | errors:%d\n", prefix, len(stats.Errors))
 	}
 }
 
@@ -362,29 +370,9 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 		os.Exit(1)
 	}
 
-	if verbose {
-		prefix := ""
-		if dryRun {
-			prefix = "[DRY RUN] "
-		}
-		fmt.Printf("  %sDone", prefix)
-		if stats.SentBytes > 0 {
-			savedPct := float64(0)
-			if stats.TotalBytes > 0 {
-				savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
-			}
-			fmt.Printf(" | sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
-		}
-		if stats.DeltaSaved > 0 {
-			fmt.Printf(" | delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
-		}
-		if len(stats.Errors) > 0 {
-			fmt.Printf(" | errors:%d", len(stats.Errors))
-		}
-		fmt.Println()
-	}
+	printVerboseStats(stats, dryRun, verbose)
 
 	if dryRun {
-		fmt.Println("Dry run complete — use 'shuttle push' to sync")
+		fmt.Println("Dry run complete -- use 'shuttle push' to sync")
 	}
 }
