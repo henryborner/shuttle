@@ -461,7 +461,7 @@ Task
                          Examples:
                            E:\configs\nginx.conf
                            /etc/myapp/config.yaml
-                       ⚠ Unlike rsync, shuttle ignores trailing slashes.
+                       [!] Unlike rsync, shuttle ignores trailing slashes.
                        E:\dist\ and E:\dist behave identically.
   target     string    Remote target, format: <server name>:<path>
                        Shuttle joins target + relative path.  Trailing / has no
@@ -478,7 +478,7 @@ Options
 ------------------------
   delete     bool      Delete extra files on the remote side (default false)
                        When enabled, remote files not present locally will be removed.
-                       ⚠ Only applies to folder syncs.  Ignored for single-file tasks.
+                       [!] Only applies to folder syncs.  Ignored for single-file tasks.
   exclude    []string  Glob patterns to skip -- matching files/dirs are not transferred
                        Example: ["*.tmp", ".git/", "node_modules/"]
   checksum   bool      Use strong checksums to detect file changes (default false)
