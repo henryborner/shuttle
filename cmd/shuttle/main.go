@@ -532,7 +532,7 @@ func runInit(cmd *cobra.Command, args []string) {
 		return
 	}
 	os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
-	fmt.Println("Created syncd.yaml — edit it and run 'shuttle push'")
+	fmt.Println("Created syncd.yaml -- edit it and run 'shuttle push'")
 	fmt.Println("Run 'shuttle config --schema' for a full field reference.")
 }
 
@@ -587,7 +587,7 @@ func runTUI(cmd *cobra.Command, args []string) {
 		if os.IsNotExist(err) {
 			// First launch: generate default config then enter TUI
 			os.WriteFile(cfgPath, []byte(initTemplate), 0644)
-			fmt.Println("Created " + cfgPath + " — editing in TUI...")
+			fmt.Println("Created " + cfgPath + " -- editing in TUI...")
 			cfg, _ = config.Load(cfgPath)
 		} else {
 			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)

@@ -181,7 +181,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 	}
 
 	if dryRun {
-		fmt.Println("Dry run — no changes will be made")
+		fmt.Println("Dry run -- no changes will be made")
 		fmt.Println()
 	}
 
@@ -333,7 +333,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	}
 
 	if dryRun {
-		fmt.Println("Dry run — no changes will be made")
+		fmt.Println("Dry run -- no changes will be made")
 		fmt.Println()
 	}
 
