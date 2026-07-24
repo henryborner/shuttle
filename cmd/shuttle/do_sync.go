@@ -58,6 +58,38 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	return nil
 }
 func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
+	// summary
+	fmt.Println()
+	fmt.Println("  ── Summary ──")
+	if stats.NewFiles > 0 {
+		fmt.Printf("  %s  %d files\n", util.Pad("NEW", 5), stats.NewFiles)
+	}
+	if stats.UpdatedFiles > 0 {
+		tag := "UPD"
+		if stats.DeltaFiles > 0 {
+			tag = fmt.Sprintf("UPD(%dΔ)", stats.DeltaFiles)
+		}
+		fmt.Printf("  %s  %d files\n", util.Pad(tag, 5), stats.UpdatedFiles)
+	}
+	if stats.DeletedFiles > 0 {
+		fmt.Printf("  %s  %d files\n", util.Pad("DEL", 5), stats.DeletedFiles)
+	}
+	if stats.SkippedFiles > 0 {
+		fmt.Printf("  %s  %d files\n", util.Pad("SKIP", 5), stats.SkippedFiles)
+	}
+	if stats.ProtectedFiles > 0 {
+		fmt.Printf("  %s  %d files\n", util.Pad("PROT", 5), stats.ProtectedFiles)
+	}
+	if stats.SentBytes > 0 || stats.DeltaSaved > 0 {
+		fmt.Printf("  %s  %s", util.Pad("SENT", 5), util.FormatBytes(stats.SentBytes))
+		if stats.DeltaSaved > 0 {
+			fmt.Printf("  (saved %s via delta)", util.FormatBytes(stats.DeltaSaved))
+		}
+		fmt.Println()
+	}
+	fmt.Printf("  %s  %d files, %s total\n",
+		util.Pad("TOTAL", 5), stats.TotalFiles, util.FormatBytes(stats.TotalBytes))
+
 	// secondary warning: high-risk files in dry-run delete list
 	// 二次警告：dry-run 删除清单中有高危文件
 	var risky []string
@@ -67,8 +99,6 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 		if kind, ok := highRiskDryExts[ext]; ok {
 			risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))
 		} else if ext == "" {
-			// no-extension files may also be important
-			// 无扩展名文件也可能是重要的
 			if kind, ok := highRiskDryExts["."+base]; ok {
 				risky = append(risky, fmt.Sprintf("  [!] %s (%s)", f, kind))
 			}
@@ -183,42 +213,28 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		if dryRun {
 			prefix = "[DRY RUN] "
 		}
-		fmt.Printf("  %sDone | files:%d new:%d updated:%d",
-			prefix, stats.TotalFiles, stats.NewFiles, stats.UpdatedFiles)
-		if stats.SkippedFiles > 0 {
-			fmt.Printf(" skipped:%d", stats.SkippedFiles)
-		}
-		if stats.ProtectedFiles > 0 {
-			fmt.Printf(" protected:%d", stats.ProtectedFiles)
-		}
-		if stats.DeletedFiles > 0 {
-			fmt.Printf(" deleted:%d", stats.DeletedFiles)
-		}
-		if stats.DeltaFiles > 0 {
-			fmt.Printf(" delta:%d", stats.DeltaFiles)
-		}
-		fmt.Printf(" | %s total", util.FormatBytes(stats.TotalBytes))
-		if stats.SentBytes > 0 {
-			savedPct := float64(0)
-			if stats.TotalBytes > 0 {
-				savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
-			}
-			fmt.Printf("  sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
-		}
 		if verbose {
-			if stats.DeltaSaved > 0 {
-				fmt.Printf("  delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
+			fmt.Printf("  %sDone", prefix)
+			if stats.SentBytes > 0 {
+				savedPct := float64(0)
+				if stats.TotalBytes > 0 {
+					savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
+				}
+				fmt.Printf(" | sent:%s (%.0f%% saved)", util.FormatBytes(stats.SentBytes), savedPct)
 			}
-		}
-		if len(stats.Errors) > 0 {
-			fmt.Printf(" | errors:%d", len(stats.Errors))
-			if verbose {
+			if stats.DeltaSaved > 0 {
+				fmt.Printf(" | delta-matched:%s", util.FormatBytes(stats.DeltaSaved))
+			}
+			if len(stats.Errors) > 0 {
+				fmt.Printf(" | errors:%d", len(stats.Errors))
 				for _, e := range stats.Errors {
 					fmt.Printf("\n    - %v", e)
 				}
 			}
+			fmt.Println()
+		} else if len(stats.Errors) > 0 {
+			fmt.Printf("  %sDone | errors:%d\n", prefix, len(stats.Errors))
 		}
-		fmt.Println()
 	}
 
 	if dryRun {

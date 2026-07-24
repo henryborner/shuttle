@@ -81,7 +81,7 @@ Quick reference:
 	rootCmd.AddCommand(pushCmd)
 
 	// tui
-	rootCmd.AddCommand(&cobra.Command{
+	tuiCmd := &cobra.Command{
 		Use:   "tui",
 		Short: "Open the terminal UI",
 		Long: `Launch the interactive terminal user interface.
@@ -91,15 +91,19 @@ mapping management (add/edit/delete sync tasks), server management
 (test connection, deploy agent), a file explorer, and settings
 (language, checksum algorithm, worker count).`,
 		Run: runTUI,
-	})
+	}
+	tuiCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
+	rootCmd.AddCommand(tuiCmd)
 
 	// list
-	rootCmd.AddCommand(&cobra.Command{
+	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "Print all tasks and servers from syncd.yaml",
 		Long:  `Read syncd.yaml and print every configured task and server to stdout.`,
 		Run:   runList,
-	})
+	}
+	listCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
+	rootCmd.AddCommand(listCmd)
 
 	// config
 	configCmd := &cobra.Command{
@@ -115,6 +119,7 @@ list of available checksum algorithms.`,
 		Run: runConfig,
 	}
 	configCmd.Flags().BoolVar(&schemaFlag, "schema", false, "print full config field reference with examples")
+	configCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
 	rootCmd.AddCommand(configCmd)
 
 	// test
@@ -128,10 +133,11 @@ is reachable and the key or password is accepted.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runTest,
 	}
+	testCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
 	rootCmd.AddCommand(testCmd)
 
 	// deploy
-	rootCmd.AddCommand(&cobra.Command{
+	deployCmd := &cobra.Command{
 		Use:   "deploy <server name>",
 		Short: "Deploy the shuttle agent to a remote Linux server",
 		Long: `Upload shuttle_linux to the named server and install it.
@@ -144,7 +150,9 @@ After deploying, run 'shuttle test <server>' to verify both
 connectivity and agent status.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runDeploy,
-	})
+	}
+	deployCmd.Flags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
+	rootCmd.AddCommand(deployCmd)
 
 	// agent
 	agentCmd := &cobra.Command{
@@ -152,6 +160,7 @@ connectivity and agent status.`,
 		Short: "Manage the remote shuttle agent",
 		Long:  `Find, check status, or remove the shuttle agent on a remote server.`,
 	}
+	agentCmd.PersistentFlags().StringVarP(&cfgPath, "config", "c", "syncd.yaml", "path to YAML config file")
 	agentStatusCmd := &cobra.Command{
 		Use:   "status <server name>",
 		Short: "Show remote agent installation status",
@@ -227,7 +236,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 		runSchema()
 		return
 	}
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config found: %v\n", err)
 		fmt.Println("Run 'shuttle init' to create one.")
@@ -267,7 +276,7 @@ func runConfig(cmd *cobra.Command, args []string) {
 }
 
 func runList(cmd *cobra.Command, args []string) {
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
 		return
@@ -285,7 +294,7 @@ func runList(cmd *cobra.Command, args []string) {
 
 func runTest(cmd *cobra.Command, args []string) {
 	serverName := args[0]
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
 		os.Exit(1)
@@ -306,7 +315,7 @@ func runTest(cmd *cobra.Command, args []string) {
 
 func runDeploy(cmd *cobra.Command, args []string) {
 	serverName := args[0]
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
 		os.Exit(1)
@@ -328,7 +337,7 @@ func runDeploy(cmd *cobra.Command, args []string) {
 
 func runAgentStatus(cmd *cobra.Command, args []string) {
 	serverName := args[0]
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
 		os.Exit(1)
@@ -355,7 +364,7 @@ func runAgentStatus(cmd *cobra.Command, args []string) {
 
 func runAgentRemove(cmd *cobra.Command, args []string) {
 	serverName := args[0]
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
 		os.Exit(1)
@@ -551,20 +560,20 @@ tasks:
 `
 
 func runTUI(cmd *cobra.Command, args []string) {
-	cfg, err := config.Load("syncd.yaml")
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// First launch: generate default config then enter TUI
-			os.WriteFile("syncd.yaml", []byte(initTemplate), 0644)
-			fmt.Println("Created syncd.yaml — editing in TUI...")
-			cfg, _ = config.Load("syncd.yaml")
+			os.WriteFile(cfgPath, []byte(initTemplate), 0644)
+			fmt.Println("Created " + cfgPath + " — editing in TUI...")
+			cfg, _ = config.Load(cfgPath)
 		} else {
 			fmt.Fprintf(os.Stderr, "Config load failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
-	if err := tui.Run(cfg, "syncd.yaml"); err != nil {
+	if err := tui.Run(cfg, cfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		os.Exit(1)
 	}
