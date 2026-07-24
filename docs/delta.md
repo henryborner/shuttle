@@ -47,11 +47,10 @@ If the agent is absent, steps 4-10 are replaced by a direct SFTP upload of the e
 
 | File Size | Block Size | Notes |
 |-----------|-----------|-------|
-| < 100 KB | 700 B | Small files: fine-grained matching |
-| 100 KB ~ 1 MB | 2 KB ~ 8 KB | Linear scaling |
-| > 1 MB | 8 KB ~ 128 KB | Capped at 128 KB |
+| ≤ 490 KB | 700 B | Fixed small block for fine matching |
+| > 490 KB | `fileSize / 10000` | Linear scaling, clamped to [700 B, 128 KB] |
 
-Block size is determined by `go-rsync` based on the signature list target size. Larger files get larger blocks to keep the signature list compact.
+Block size is computed by `go-rsync` based on target signature list density (~10,000 signatures per file).
 
 ## 4. Checksum Selection
 
@@ -72,16 +71,16 @@ Shuttle uses a custom binary protocol (not compatible with standard rsync). Key 
 |-----------|-------|
 | CHAR_OFFSET | 31 |
 | Checksum1 width | 32-bit (packed) |
-| Endianness | Little-endian |
-| Stream framing | Length-prefixed batches |
+| Endianness | Big-endian |
+| Batch framing | 4-byte count prefix per batch |
 
 ### Instruction Format
 
-Each delta instruction is one of:
+Each batch is prefixed with a 4-byte big-endian count. Individual instructions:
 
-- **Literal:** `[1-byte type] [4-byte length] [N bytes of data]`
-- **Match:** `[1-byte type] [4-byte block index]`
-- **End-of-stream:** `[4 zero bytes]`
+- **Literal:** `[flag=0:1B] [dataLen:4B big-endian] [N bytes of data]`
+- **Match:** `[flag=1:1B] [blockIdx:4B big-endian]`
+- **End-of-stream:** count = 0 (no instructions follow)
 
 Instructions are batched (default 256 per batch) and streamed to reduce memory pressure.
 
