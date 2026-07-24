@@ -96,6 +96,21 @@ tasks:
 | `--algo md5\|xxh64\|sha256\|xxh3` | 校验和算法 |
 | `-c`, `--config <path>` | 指定配置文件路径（默认 syncd.yaml） |
 
+### ad-hoc 同步（无需配置）
+
+不用写 syncd.yaml，一条命令直接同步：
+
+```powershell
+# 文件夹同步（带删除多余文件）
+shuttle push --source .\dist\ --target myserver:/var/www/ --delete
+
+# 单文件同步
+shuttle push --source .\nginx.conf --target myserver:/etc/nginx/nginx.conf
+
+# 模拟运行，预览变更
+shuttle push --source .\dist\ --target myserver:/var/www/ --dry-run
+```
+
 ## 快捷键
 
 | 按键 | 功能 |

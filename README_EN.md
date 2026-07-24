@@ -96,6 +96,21 @@ tasks:
 | `--algo md5\|xxh64\|sha256\|xxh3` | Checksum algorithm |
 | `-c`, `--config <path>` | Config file path (default syncd.yaml) |
 
+### Ad-hoc Sync (No Config Needed)
+
+Sync directly without writing syncd.yaml:
+
+```powershell
+# Folder sync (with delete extra files)
+shuttle push --source .\dist\ --target myserver:/var/www/ --delete
+
+# Single file sync
+shuttle push --source .\nginx.conf --target myserver:/etc/nginx/nginx.conf
+
+# Dry run, preview changes
+shuttle push --source .\dist\ --target myserver:/var/www/ --dry-run
+```
+
 ## Shortcuts
 
 | Key | Action |
