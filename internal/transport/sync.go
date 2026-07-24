@@ -23,8 +23,8 @@ type SyncOptions struct {
 	DryRun   bool
 	SkipDots bool // skip files/dirs starting with "." (default true for safety) / 跳过.开头的文件
 	Workers  int  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
-	Flat    bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
-	NoDelta bool // force full upload, skip delta signature matching / 强制全量上传，跳过 delta 签名匹配
+	Flat     bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
+	NoDelta  bool // force full upload, skip delta signature matching / 强制全量上传，跳过 delta 签名匹配
 }
 
 type SyncStats struct {
@@ -477,7 +477,13 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 		return nil
 	}
 
+	var lastProgress int64
 	err = eng.SearchReader(f, info.Size, func(mr delta.MatchResult) error {
+		// Track search progress through the new file
+		if mr.Offset > lastProgress {
+			lastProgress = mr.Offset
+			e.hook.OnFileProgress(info.Path, lastProgress, info.Size)
+		}
 		cp := mr
 		if mr.IsLiteral {
 			cp.Data = make([]byte, len(mr.Data))
