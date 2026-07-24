@@ -96,6 +96,73 @@ tasks:
 | `Tab` | Toggle file browser |
 | `Q`, `Ctrl+C` | Quit TUI |
 
+## Remote Deployment
+
+Shuttle needs a lightweight agent (`shuttle_linux`) running on the remote Linux server for delta transfers. Without the agent, Shuttle still works but falls back to **full upload** (entire file every time).
+
+### Prerequisites
+
+- **Remote OS**: Linux x86_64 (`shuttle_linux` is an amd64 binary)
+- **SSH access**: Remote user needs read/write permission on target directories
+- **Local file**: `shuttle_linux` must be in the same directory as `shuttle.exe` (download both from the Release page)
+
+### Method 1: TUI One-Click Deploy (Recommended)
+
+1. Double-click `shuttle.exe` to open the TUI, switch to the **Servers** page
+2. Press `A` to add a server: fill in name, host IP, port, username, SSH key path
+3. Press `Ctrl+T` to test the connection — shows remote OS and whether agent is installed
+4. If "No shuttle agent detected", press `Enter` to deploy
+5. Save the server config after successful deployment
+
+The TUI tries two install paths automatically:
+- `/usr/local/bin/shuttle` (system path, needs sudo)
+- `~/shuttle` (home directory, no root needed) + appends to `~/.bashrc` PATH
+
+> Press `U` on an existing server to update the agent to the latest version.
+
+### Method 2: Manual Deploy
+
+If TUI deployment fails (e.g. network restrictions), upload manually:
+
+```powershell
+# From Windows locally
+scp shuttle_linux user@host:~/shuttle
+ssh user@host chmod +x ~/shuttle
+```
+
+Ensure `shuttle` is in the remote PATH, or move it to `/usr/local/bin/`:
+
+```bash
+# On the remote server
+sudo mv ~/shuttle /usr/local/bin/shuttle
+```
+
+### Verify Deployment
+
+SSH into the remote server and run:
+
+```bash
+shuttle version
+# Output: Shuttle v0.1.5.9  Go: go1.xx  OS: linux  Arch: amd64  Strong: xxh64  Algos: ...
+```
+
+Seeing version info means the agent is installed correctly.
+
+### Post-Deployment Workflow
+
+1. **Signature cache**: The agent caches file block signatures at `~/.shuttle_cache/` on the remote. Next sync of the same file skips signature computation and reuses the cache.
+2. **Delta sync**: During `shuttle push`, the local side runs `shuttle receive <file>` on the remote via SSH. Both sides exchange signatures and delta instructions over stdin/stdout.
+3. **Auto fallback**: If the remote agent is unavailable (not installed, deleted, or not in PATH), Shuttle automatically falls back to full upload without errors.
+
+### Uninstall Agent
+
+When deleting a server in the TUI, press `D` (instead of `Y`) to also clean up the remote agent:
+
+```bash
+# Or manually SSH and remove
+ssh user@host rm -f /usr/local/bin/shuttle ~/shuttle
+```
+
 ## How It Works
 
 ### Delta Transfer (rsync algorithm)

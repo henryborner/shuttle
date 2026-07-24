@@ -96,6 +96,73 @@ tasks:
 | `Tab` | 切换文件浏览器 |
 | `Q`, `Ctrl+C` | 退出 TUI |
 
+## 远程部署
+
+Shuttle 需要在远端 Linux 服务器上运行一个轻量 agent（`shuttle_linux`）才能实现增量传输。没有 agent 时，Shuttle 仍可工作，但会回退为**全量上传**（每次都传整个文件）。
+
+### 前置条件
+
+- **远端系统**：Linux x86_64（`shuttle_linux` 是 Linux amd64 二进制）
+- **SSH 访问**：远端用户需有读写目标目录的权限
+- **本地文件**：`shuttle_linux` 必须与 `shuttle.exe` 放在同一目录（从 Release 页面一并下载）
+
+### 方式一：TUI 一键部署（推荐）
+
+1. 双击 `shuttle.exe` 进入 TUI，切换到**服务器管理**页面
+2. 按 `A` 添加服务器，填写名称、IP、端口、用户名、SSH 密钥路径
+3. 按 `Ctrl+T` 测试连接 — 成功后会显示远端 OS 以及是否已安装 agent
+4. 如果显示 "未检测到 shuttle agent"，按 `Enter` 一键部署
+5. 部署成功后可保存服务器配置
+
+TUI 会自动尝试两个安装路径：
+- `/usr/local/bin/shuttle`（系统路径，需 sudo 权限）
+- `~/shuttle`（用户目录，无需 root）+ 自动追加到 `~/.bashrc` 的 PATH
+
+> 已有 agent 的服务器可按 `U` 键更新到最新版本。
+
+### 方式二：手动部署
+
+如果 TUI 部署失败（如网络限制），可手动上传：
+
+```powershell
+# Windows 本地执行
+scp shuttle_linux user@host:~/shuttle
+ssh user@host chmod +x ~/shuttle
+```
+
+确保 `shuttle` 在远端 PATH 中，或将其移动到 `/usr/local/bin/`：
+
+```bash
+# 远端执行
+sudo mv ~/shuttle /usr/local/bin/shuttle
+```
+
+### 验证部署
+
+SSH 到远端执行：
+
+```bash
+shuttle version
+# 输出: Shuttle v0.1.5.9  Go: go1.xx  OS: linux  Arch: amd64  Strong: xxh64  Algos: ...
+```
+
+能输出版本信息即表示 agent 安装成功。
+
+### 部署后的工作流程
+
+1. **签名缓存**：agent 会在远端 `~/.shuttle_cache/` 目录缓存文件的块签名，下次同步相同文件时跳过签名计算，直接复用缓存
+2. **增量同步**：`shuttle push` 时，本地通过 SSH 在远端执行 `shuttle receive <文件路径>`，双方通过 stdin/stdout 交换签名和 delta 指令
+3. **自动回退**：如果远端 agent 不可用（未安装、被删除、路径不通），Shuttle 自动回退为全量上传，不会报错中断
+
+### 卸载 Agent
+
+在 TUI 服务器页面删除服务器时，按 `D`（而非 `Y`）可同时清理远端 agent：
+
+```bash
+# 或手动 SSH 到远端删除
+ssh user@host rm -f /usr/local/bin/shuttle ~/shuttle
+```
+
 ## 工作原理
 
 ### 增量传输（rsync delta 算法）
