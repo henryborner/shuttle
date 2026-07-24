@@ -107,7 +107,10 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	var deltaJobs []deltaJob
 
 	for _, lf := range localFiles {
-		relPath, _ := filepath.Rel(opts.Source, lf.Path)
+		relPath, relErr := filepath.Rel(opts.Source, lf.Path)
+		if relErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
+		}
 		if relPath == "." || relPath == "" {
 			relPath = filepath.Base(opts.Source)
 		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
@@ -209,10 +212,21 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		for _, dj := range deltaJobs {
 			go func(job deltaJob) {
 				sem <- struct{}{}
+				defer func() {
+					if r := recover(); r != nil {
+						resultCh <- struct {
+							job   deltaJob
+							sent  int64
+							saved int64
+							start time.Time
+							err   error
+						}{job, 0, 0, time.Now(), fmt.Errorf("delta panic: %v", r)}
+					}
+					<-sem
+				}()
 				start := time.Now()
 				e.hook.OnFileStart(job.relPath, job.lf.Size)
 				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
-				<-sem
 				resultCh <- struct {
 					job   deltaJob
 					sent  int64
@@ -593,7 +607,10 @@ func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileI
 		if err != nil {
 			return err
 		}
-		relPath, _ := filepath.Rel(root, path)
+		relPath, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] ScanLocalFiles Rel(%q, %q): %v\n", root, path, relErr)
+		}
 		for _, p := range excludes {
 			// 规范化模式：去掉尾部 / 以便匹配 filepath.Base 结果
 			pat := strings.TrimRight(p, "/")
