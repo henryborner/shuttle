@@ -3,9 +3,15 @@ package util
 
 import "fmt"
 
+// Version is the current Shuttle version string.
+const Version = "0.1.5.12"
+
 // FormatBytes formats a byte count as a human-readable string using binary
 // prefixes (e.g. "1.5 MiB", base-1024).
 func FormatBytes(b int64) string {
+	if b < 0 {
+		return "0 B"
+	}
 	const unit = 1024
 	if b < unit {
 		return fmt.Sprintf("%d B", b)

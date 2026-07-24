@@ -175,7 +175,7 @@ Seeing version info means the agent is installed correctly.
 shuttle agent remove myserver
 ```
 
-This locates the agent, verifies it's actually Shuttle by running `shuttle version` (won't delete an unrelated binary with the same name), then removes it.
+This locates the agent, verifies it's actually Shuttle via a unique identifier (won't delete an unrelated binary with the same name), then removes it.
 
 **TUI**: When deleting a server, press `D` (instead of `Y`) to also clean up the remote agent.
 

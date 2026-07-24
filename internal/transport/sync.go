@@ -89,6 +89,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		if listErr != nil {
 			// Listing was truncated or had errors — remote view is incomplete.
 			// Sync proceeds safely (no deletions for invisible files).
+			fmt.Fprintf(os.Stderr, "  [WARN] Remote listing incomplete on %s: %v\n", opts.Target, listErr)
+			fmt.Fprintf(os.Stderr, "    Delete pass skipped for unscanned directories.\n")
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
@@ -417,9 +419,9 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	algo := delta.GetDefault()
-	cmd := fmt.Sprintf("shuttle receive --algo %s '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	cmd := fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	if checksum {
-		cmd = fmt.Sprintf("shuttle receive --algo %s --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+		cmd = fmt.Sprintf("shuttle receive --algo '%s' --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	}
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
@@ -533,13 +535,18 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	<-stderrDone
 
 	if errBuf.Len() > 0 {
-		// Remote process reported an error after receiving instructions.
-		// The remote uses atomic rename, so the original file should still be
-		// intact, but fall back to full upload to guarantee correctness.
-		if fbErr := e.fallbackUpload(info, remotePath, "remote: "+strings.TrimSpace(errBuf.String())); fbErr != nil {
-			return info.Size, 0, fbErr
+		errStr := strings.TrimSpace(errBuf.String())
+		// Only fall back on actual errors, not non-fatal warnings (e.g. cache save).
+		// 仅对真正的错误做 fallback，忽略非致命警告（如缓存保存失败）。
+		if strings.Contains(errStr, "RECEIVER ERROR:") {
+			if fbErr := e.fallbackUpload(info, remotePath, "remote: "+errStr); fbErr != nil {
+				return info.Size, 0, fbErr
+			}
+			return info.Size, 0, nil
 		}
-		return info.Size, 0, nil
+		// Non-fatal stderr — delta succeeded, just log it.
+		// 非致命 stderr — delta 成功，仅记录。
+		fmt.Fprintf(os.Stderr, "delta: remote stderr for %s: %s\n", filepath.Base(info.Path), errStr)
 	}
 
 	if err := e.transport.SetModTime(remotePath, info.ModTime); err != nil {

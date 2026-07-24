@@ -121,6 +121,11 @@ func ParseTarget(target string) (serverName, path string) {
 	}
 	for i := 0; i < len(target); i++ {
 		if target[i] == ':' && i > 0 && target[i-1] != '\\' && i < len(target)-1 && target[i+1] != '\\' {
+			// Windows drive letter (e.g. C:/path or D:\) — not a server:path target.
+			// Windows 盘符（如 C:/path）— 不是 server:path 格式。
+			if i == 1 && ((target[0] >= 'A' && target[0] <= 'Z') || (target[0] >= 'a' && target[0] <= 'z')) {
+				continue
+			}
 			return target[:i], target[i+1:]
 		}
 	}

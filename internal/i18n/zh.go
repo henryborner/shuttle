@@ -1,12 +1,14 @@
 // zh.go — Chinese translations
 package i18n
 
+import "github.com/henryborner/shuttle/internal/util"
+
 func init() {
 	register(ZH, map[string]string{
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "增量文件同步工具",
-		"app.version":      " v0.1.5.10",
+		"app.version":      " v" + util.Version,
 		"app.connected":    "已连接",
 		"app.disconnected": "未连接",
 

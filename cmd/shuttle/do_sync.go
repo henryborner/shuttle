@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	delta "github.com/henryborner/go-rsync"
+	"github.com/henryborner/shuttle/internal/agent"
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/transport"
 	"github.com/henryborner/shuttle/internal/util"
@@ -27,7 +28,6 @@ var highRiskDryExts = map[string]string{
 // dryRunHook lists each file's operation in dry-run mode.
 // dryRunHook 在 dry-run 模式下列出每个文件的操作。
 type dryRunHook struct {
-	dry          bool
 	deletedFiles []string
 	hasProgress  bool // whether a progress bar was displayed / 是否显示过进度条
 }
@@ -203,53 +203,77 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 		fmt.Println()
 	}
 
+	// Cache agent check results per server to avoid redundant SSH connections.
+	// 缓存 agent 检查结果，避免同服务器多 task 时重复连接。
+	agentCache := map[string]bool{}
+
 	for _, task := range tasks {
-		fmt.Printf("Task: %s\n  Source: %s\n  Target: %s\n", task.Name, task.Source, task.Target)
+		// Wrap in closure so defer runs per-task, not at end of doSync.
+		// 闭包保证 defer 在每个 task 结束时执行。
+		func() {
+			fmt.Printf("Task: %s\n  Source: %s\n  Target: %s\n", task.Name, task.Source, task.Target)
 
-		serverName, remotePath := config.ParseTarget(task.Target)
-		if serverName == "" {
-			fmt.Println("  Local sync not yet supported")
-			continue
-		}
+			serverName, remotePath := config.ParseTarget(task.Target)
+			if serverName == "" {
+				fmt.Println("  Local sync not yet supported")
+				return
+			}
 
-		server := cfg.GetServer(serverName)
-		if server == nil {
-			fmt.Fprintf(os.Stderr, "  Server not found: %s\n", serverName)
-			continue
-		}
+			server := cfg.GetServer(serverName)
+			if server == nil {
+				fmt.Fprintf(os.Stderr, "  Server not found: %s\n", serverName)
+				return
+			}
 
-		// 连接
-		sftp, err := connectSFTP(server)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  Connect failed: %v\n", err)
-			continue
-		}
+			// 连接
+			sftp, err := connectSFTP(server)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  Connect failed: %v\n", err)
+				return
+			}
+			defer sftp.Close()
 
-		// 同步
-		engine := transport.NewSyncEngine(sftp)
-		engine.SetHook(&dryRunHook{dry: dryRun})
-		stats, err := engine.Sync(transport.SyncOptions{
-			Source:   task.Source,
-			Target:   remotePath,
-			Delete:   task.Options.Delete,
-			Exclude:  task.Options.Exclude,
-			Protect:  server.Protect,
-			Checksum: task.Options.Checksum,
-			DryRun:   dryRun,
-			ShowDots: task.Options.ShowDots,
-			Workers:  workers,
-			Flat:     task.Options.Flat,
-			NoDelta:  noDelta,
-		})
+			// 验证远端 agent（identify 强验证，防止执行假冒二进制）
+			taskNoDelta := noDelta
+			hasAgent, checked := agentCache[serverName]
+			if !checked {
+				ok, checkErr := agent.Check(*server)
+				hasAgent = checkErr == nil && ok
+				agentCache[serverName] = hasAgent
+				if checkErr != nil {
+					fmt.Fprintf(os.Stderr, "  [WARN] Agent check failed on %s: %v\n", serverName, checkErr)
+				}
+			}
+			if !hasAgent {
+				fmt.Fprintf(os.Stderr, "  [WARN] Agent not found on %s -- falling back to full upload (no delta).\n", serverName)
+				fmt.Fprintf(os.Stderr, "    Run 'shuttle deploy %s' to enable delta acceleration.\n", serverName)
+				taskNoDelta = true
+			}
 
-		sftp.Close()
+			// 同步
+			engine := transport.NewSyncEngine(sftp)
+			engine.SetHook(&dryRunHook{})
+			stats, err := engine.Sync(transport.SyncOptions{
+				Source:   task.Source,
+				Target:   remotePath,
+				Delete:   task.Options.Delete,
+				Exclude:  task.Options.Exclude,
+				Protect:  server.Protect,
+				Checksum: task.Options.Checksum,
+				DryRun:   dryRun,
+				ShowDots: task.Options.ShowDots,
+				Workers:  workers,
+				Flat:     task.Options.Flat,
+				NoDelta:  taskNoDelta,
+			})
 
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  Sync failed: %v\n", err)
-			continue
-		}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  Sync failed: %v\n", err)
+				return // non-fatal per task
+			}
 
-		printVerboseStats(stats, dryRun, verbose)
+			printVerboseStats(stats, dryRun, verbose)
+		}()
 	}
 
 	if dryRun {
@@ -364,8 +388,20 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	}
 	defer sftp.Close()
 
+	// 验证远端 agent（identify 强验证，防止执行假冒二进制）
+	adHocNoDelta := noDelta
+	ok, checkErr := agent.Check(*server)
+	if checkErr != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] Agent check failed on %s: %v\n", serverName, checkErr)
+	}
+	if checkErr != nil || !ok {
+		fmt.Fprintf(os.Stderr, "  [WARN] Agent not found on %s -- falling back to full upload (no delta).\n", serverName)
+		fmt.Fprintf(os.Stderr, "    Run 'shuttle deploy %s' to enable delta acceleration.\n", serverName)
+		adHocNoDelta = true
+	}
+
 	engine := transport.NewSyncEngine(sftp)
-	engine.SetHook(&dryRunHook{dry: dryRun})
+	engine.SetHook(&dryRunHook{})
 	stats, err := engine.Sync(transport.SyncOptions{
 		Source:   source,
 		Target:   remotePath,
@@ -377,7 +413,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 		ShowDots: false,
 		Workers:  workers,
 		Flat:     flat,
-		NoDelta:  noDelta,
+		NoDelta:  adHocNoDelta,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  Sync failed: %v\n", err)

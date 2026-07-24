@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -311,12 +312,20 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 		if err != nil {
 			return testResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.os_err"), err)}
 		}
-		// Check if shuttle binary exists on remote
+		// Check if shuttle binary exists on remote using identify (strong verification).
+		// Try the same explicit paths as agent.Find() — not relying on $PATH.
+		// 用 identify 命令强验证 shuttle 二进制，使用显式路径而非依赖 $PATH。
 		hasAgent := false
-		if s2, err := client.NewSession(); err == nil {
-			_, err := s2.Output("shuttle version")
-			hasAgent = (err == nil)
-			s2.Close()
+		for _, p := range agent.RemotePaths {
+			if s2, err := client.NewSession(); err == nil {
+				idOut, idErr := s2.Output(p + " identify")
+				if idErr == nil && strings.HasPrefix(strings.TrimSpace(string(idOut)), "SHuTtL3_AgEnT_lD:") {
+					hasAgent = true
+					s2.Close()
+					break
+				}
+				s2.Close()
+			}
 		}
 		return testResultMsg{ok: true, msg: i18n.T("srv.test_ok"), osName: string(out), hasAgent: hasAgent}
 	}
@@ -659,5 +668,7 @@ func (m *serversModel) protectView(width, height int) string {
 
 // tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
 func tryRemoveRemoteAgent(srv config.Server) {
-	_ = agent.Remove(srv, nil)
+	if err := agent.Remove(srv, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to remove remote agent on %s: %v\n", srv.Host, err)
+	}
 }

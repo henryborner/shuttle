@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -288,6 +289,11 @@ func (rb *RemoteBrowser) removeRecursive(dir string) error {
 	}
 	for _, e := range entries {
 		p := path.Join(dir, e.Name())
+		// Skip symlinks — they may point outside the target tree.
+		// 跳过符号链接，避免删除预期范围外的文件。
+		if e.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
 		if e.IsDir() {
 			if err := rb.removeRecursive(p); err != nil {
 				return err

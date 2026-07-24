@@ -22,6 +22,9 @@ type settingsModel struct {
 
 func newSettings(cfg *config.Config, cfgPath string) *settingsModel {
 	algos := delta.ListAlgos()
+	if len(algos) == 0 {
+		algos = []string{"md5"} // safety fallback
+	}
 	cur := delta.GetDefault()
 	ai := 0
 	for i, a := range algos {

@@ -13,6 +13,7 @@ import (
 	"github.com/henryborner/shuttle/internal/agent"
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/tui"
+	"github.com/henryborner/shuttle/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -33,16 +34,15 @@ var (
 	adHocExclude  []string
 	noDelta       bool
 
-	versionStr = "0.1.5.10"
-	rootCmd    = &cobra.Command{
+	rootCmd = &cobra.Command{
 		Use:   "shuttle",
-		Short: "Incremental file sync over SSH",
+		Short: "File sync over SSH with optional delta acceleration",
 		Long: `Shuttle syncs local directories to remote Linux servers over SSH.
 
-It compares source and target using the rsync delta algorithm:
-files that exist on both sides transfer only a checksum signature
-(a few KB) instead of the full file content. Only changed portions
-of files are sent across the network.
+With the remote agent installed, shuttle uses the rsync delta algorithm:
+only changed portions of files are sent across the network. Without the
+agent, shuttle falls back to full upload automatically -- everything still
+works, just without the bandwidth savings.
 
 Mappings between local paths and remote servers are defined in a
 syncd.yaml config file. A terminal UI (TUI) is also available for
@@ -52,9 +52,9 @@ Getting started:
   shuttle init                 create a config template
   shuttle config --schema      full field reference with examples
   shuttle push                 sync tasks (config or ad-hoc --source/--target)
-  shuttle deploy <server>      deploy the remote agent
+  shuttle deploy <server>      deploy the remote agent (enables delta)
   shuttle agent status <server> check agent installation`,
-		Version: versionStr,
+		Version: util.Version,
 	}
 )
 
@@ -80,7 +80,9 @@ Ad-hoc mode: bypass config with --source/--target.
   shuttle push --source ./dist --target myserver:/var/www --delete
 
 Each task connects to its target server via SSH, compares local and
-remote files, and transfers only the differences (delta).
+remote files, and transfers changes. If the remote agent is installed,
+delta acceleration is used (only changed portions are sent). Without
+the agent, full files are uploaded instead -- sync still completes.
 
 Quick reference:
   Shuttle detects folder vs file from the filesystem, not from trailing
@@ -100,7 +102,7 @@ Quick reference:
 	pushCmd.Flags().BoolVar(&adHocFlat, "flat", false, "ad-hoc: map content directly without source folder wrapping")
 	pushCmd.Flags().BoolVar(&adHocChecksum, "checksum", false, "ad-hoc: use checksum to detect changes")
 	pushCmd.Flags().StringSliceVar(&adHocExclude, "exclude", nil, "ad-hoc: exclude patterns (comma-separated)")
-	pushCmd.Flags().BoolVar(&noDelta, "no-delta", false, "force full upload, skip delta signature matching")
+	pushCmd.Flags().BoolVar(&noDelta, "no-delta", false, "force full upload (auto-enabled when agent is absent)")
 	rootCmd.AddCommand(pushCmd)
 
 	// tui
@@ -169,8 +171,10 @@ Tries /usr/local/bin/shuttle first (needs sudo), then ~/shuttle
 as a non-root fallback. The binary must be named shuttle_linux
 and placed next to shuttle.exe.
 
-After deploying, run 'shuttle test <server>' to verify both
-connectivity and agent status.`,
+Once deployed, shuttle push automatically uses delta acceleration
+(sending only file differences) instead of full upload.
+
+After deploying, run 'shuttle agent status <server>' to verify.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runDeploy,
 	}
@@ -188,8 +192,8 @@ connectivity and agent status.`,
 		Use:   "status <server name>",
 		Short: "Show remote agent installation status",
 		Long: `Search common paths on the remote server for a shuttle agent binary.
-Each candidate is verified by running "<path> version" and checking
-the output starts with "Shuttle" -- this avoids false positives from
+Each candidate is verified by running "<path> identify" and checking
+for a unique agent identifier — this avoids false positives from
 unrelated binaries with the same name.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runAgentStatus,
@@ -200,8 +204,9 @@ unrelated binaries with the same name.`,
 		Long: `Search for the shuttle agent on the remote server, verify it's
 actually Shuttle (not an unrelated binary), and remove it.
 
-Only binaries whose "version" output starts with "Shuttle" are
-deleted -- other files named "shuttle" are left untouched.`,
+Only binaries whose "identify" output matches the unique Shuttle
+agent identifier are deleted — other files named "shuttle" are
+left untouched.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runAgentRemove,
 	}
@@ -233,18 +238,40 @@ Next steps:
 		Run:   runVersion,
 	})
 
+	// identify (hidden) — produces a unique output to verify this is the real Shuttle binary.
+	// identify（隐藏）— 输出唯一标识，用于验证这是真正的 Shuttle 二进制。
+	rootCmd.AddCommand(&cobra.Command{
+		Use:    "identify",
+		Short:  "Output unique agent identifier (internal use)",
+		Long:   `Internal command used to verify this binary is the real Shuttle agent. Outputs a unique formatted string that no other software would produce.`,
+		Hidden: true,
+		Run:    runIdentify,
+	})
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
 func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Printf("Shuttle v%s\n", versionStr)
+	fmt.Printf("Shuttle v%s\n", util.Version)
 	fmt.Printf("  Go:     %s\n", runtime.Version())
 	fmt.Printf("  OS:     %s\n", runtime.GOOS)
 	fmt.Printf("  Arch:   %s\n", runtime.GOARCH)
 	fmt.Printf("  Strong: %s\n", delta.GetDefault())
 	fmt.Printf("  Algos:  %s\n", strings.Join(delta.ListAlgos(), ", "))
+}
+
+// runIdentify outputs a unique formatted identifier string used to verify
+// that a remote binary is the real Shuttle agent (not an unrelated program
+// that happens to be named "shuttle").
+// 输出唯一标识字符串，用于确认远程二进制是真正的 Shuttle agent。
+func runIdentify(cmd *cobra.Command, args []string) {
+	// Format: SHuTtL3_AgEnT_lD:<version>:<os>/<arch>:<algos>
+	// Mixed-case prefix is deliberately unique — no other software would produce it.
+	fmt.Printf("SHuTtL3_AgEnT_lD:%s:%s/%s:%s\n",
+		util.Version, runtime.GOOS, runtime.GOARCH,
+		strings.Join(delta.ListAlgos(), ","))
 }
 
 func runPush(cmd *cobra.Command, args []string) {
@@ -385,7 +412,7 @@ func runAgentStatus(cmd *cobra.Command, args []string) {
 	if r == nil {
 		fmt.Println("Agent: not installed")
 		fmt.Println("Run 'shuttle deploy " + serverName + "' to install.")
-		os.Exit(1)
+		return
 	}
 	fmt.Printf("Path:    %s\n", r.Path)
 	fmt.Printf("Version: %s\n", r.Version)
@@ -565,8 +592,9 @@ servers:
 
 tasks:
   # -- 示例1: 文件夹同步（部署网站）--
-  #   source 末尾有 \ → 把文件夹内容映射到 target
-  #   target 末尾有 / → 内容放入该目录下
+  #   Shuttle 通过文件系统自动检测文件夹/文件，不依赖尾部斜杠
+  #   flat: false → 源文件夹名出现在目标路径中
+  #   flat: true  → 源文件夹内容直接映射，不套外层目录
   - name: web
     source: E:\projects\website\dist\
     target: myserver:/var/www/html/
@@ -579,8 +607,8 @@ tasks:
       flat: false            # true: 不套源文件夹名，直接映射内容
 
   # -- 示例2: 单文件同步（推送配置）--
-  #   source 无末尾斜杠 → 视为单文件
-  #   target 无末尾斜杠 → 精确覆盖该路径
+  #   source 指向一个文件（非目录）→ 直接同步到 target 路径
+  #   target 指向完整文件路径 → 精确覆盖该文件
   # - name: nginx-config
   #   source: E:\configs\nginx.conf
   #   target: myserver:/etc/nginx/nginx.conf
@@ -589,6 +617,9 @@ tasks:
 `
 
 func runTUI(cmd *cobra.Command, args []string) {
+	if cfgPath == "" {
+		cfgPath = "syncd.yaml"
+	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -16,11 +16,23 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// remotePaths lists candidate installation paths on the remote server,
+// RemotePaths lists candidate installation paths on the remote server,
 // in priority order (system → user).
-var remotePaths = []string{
+// RemotePaths 远端 agent 候选安装路径，优先级从系统到用户。
+var RemotePaths = []string{
 	"/usr/local/bin/shuttle",
 	"$HOME/shuttle",
+}
+
+// shellPath quotes a path for safe use in a remote shell command.
+// Literal paths are single-quoted; paths containing $ (e.g. $HOME) are
+// left unquoted so the shell expands the variable.
+// shellPath 对路径做安全转义，字面量路径加单引号，含 $ 的路径保持原样由 shell 展开。
+func shellPath(p string) string {
+	if strings.Contains(p, "$") {
+		return p
+	}
+	return "'" + strings.ReplaceAll(p, "'", "'\\''") + "'"
 }
 
 // FindResult describes a verified shuttle agent installation.
@@ -53,9 +65,15 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 		path string
 		cmd  string
 	}
-	paths := []deployPath{
-		{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
-		{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
+	// Build deploy paths from RemotePaths to keep a single source of truth.
+	// 从 RemotePaths 生成部署路径，保持单一数据源。
+	paths := make([]deployPath, 0, len(RemotePaths))
+	for _, p := range RemotePaths {
+		cmd := "cat > " + shellPath(p) + " && chmod +x " + shellPath(p)
+		if p == "$HOME/shuttle" {
+			cmd += " && grep -q 'export PATH=$PATH:$HOME' $HOME/.bashrc 2>/dev/null || echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"
+		}
+		paths = append(paths, deployPath{path: p, cmd: cmd})
 	}
 
 	var lastErr error
@@ -73,6 +91,7 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 		}
 		if err := s.Start(dp.cmd); err != nil {
 			lastErr = err
+			stdin.Close()
 			s.Close()
 			continue
 		}
@@ -90,12 +109,27 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 		}
 		s.Close()
 
-		out, err := runRemoteCmd(client, dp.path+" version")
+		// Verify with identify first (machine check).
+		// 先用 identify 做机器验证。
+		idOut, err := runRemoteCmd(client, shellPath(dp.path)+" identify")
 		if err != nil {
-			lastErr = err
+			lastErr = fmt.Errorf("identify command failed: %w", err)
+			if _, cleanErr := runRemoteCmd(client, "rm -f "+shellPath(dp.path)); cleanErr != nil {
+				lastErr = fmt.Errorf("%w (cleanup also failed: %v)", lastErr, cleanErr)
+			}
 			continue
 		}
-		return dp.path, strings.TrimSpace(out), nil
+		if !strings.HasPrefix(strings.TrimSpace(idOut), "SHuTtL3_AgEnT_lD:") {
+			lastErr = fmt.Errorf("identify output mismatch: got %q", strings.TrimSpace(idOut))
+			if _, cleanErr := runRemoteCmd(client, "rm -f "+shellPath(dp.path)); cleanErr != nil {
+				lastErr = fmt.Errorf("%w (cleanup also failed: %v)", lastErr, cleanErr)
+			}
+			continue
+		}
+		// Get human-readable version string for display.
+		// 用 version 获取人类可读的版本信息展示。
+		verOut, _ := runRemoteCmd(client, shellPath(dp.path)+" version")
+		return dp.path, strings.TrimSpace(verOut), nil
 	}
 	return "", "", fmt.Errorf("deploy failed: %w", lastErr)
 }
@@ -109,14 +143,15 @@ func Check(srv config.Server) (bool, error) {
 }
 
 // Find searches common remote paths for a shuttle agent binary.
-// Each candidate is verified by running "<path> version" and checking the
-// output starts with "Shuttle" — this avoids false positives from unrelated
-// binaries that happen to be named "shuttle".
+// Each candidate is verified by running "<path> identify" and checking for the
+// unique agent identifier prefix ("SHuTtL3_AgEnT_lD:") — no other software
+// would produce this output, preventing false positives from unrelated binaries
+// that happen to be named "shuttle".
+//
 // Returns nil if no verified agent is found.
 //
-// Find 在远端搜索 shuttle agent，对每个候选路径执行 "<path> version"
-// 并验证输出以 "Shuttle" 开头，避免误删同名无关二进制。
-// 未找到时返回 nil。
+// Find 在远端搜索 shuttle agent，通过 identify 命令验证唯一标识前缀
+// （"SHuTtL3_AgEnT_lD:"），避免误删同名无关二进制。未找到时返回 nil。
 func Find(srv config.Server) (*FindResult, error) {
 	client, err := dial(srv, 8*time.Second)
 	if err != nil {
@@ -124,16 +159,17 @@ func Find(srv config.Server) (*FindResult, error) {
 	}
 	defer client.Close()
 
-	for _, p := range remotePaths {
-		out, err := runRemoteCmd(client, p+" version")
-		if err != nil {
+	for _, p := range RemotePaths {
+		// Verify with identify first (machine check).
+		// 先用 identify 做机器验证。
+		idOut, err := runRemoteCmd(client, shellPath(p)+" identify")
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(idOut), "SHuTtL3_AgEnT_lD:") {
 			continue
 		}
-		out = strings.TrimSpace(out)
-		// Verify it's actually Shuttle, not some other binary named "shuttle"
-		if strings.HasPrefix(out, "Shuttle") {
-			return &FindResult{Path: p, Version: out}, nil
-		}
+		// Get human-readable version string for display.
+		// 用 version 获取人类可读的版本信息展示。
+		verOut, _ := runRemoteCmd(client, shellPath(p)+" version")
+		return &FindResult{Path: p, Version: strings.TrimSpace(verOut)}, nil
 	}
 	return nil, nil
 }
@@ -163,10 +199,13 @@ func Remove(srv config.Server, found *FindResult) error {
 	}
 	defer client.Close()
 
-	session, _ := client.NewSession()
-	if session != nil {
-		session.Run("rm -f " + r.Path)
-		session.Close()
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	defer session.Close()
+	if err := session.Run("rm -f " + shellPath(r.Path)); err != nil {
+		return fmt.Errorf("remove %s: %w", r.Path, err)
 	}
 	return nil
 }
@@ -190,11 +229,14 @@ func dial(srv config.Server, timeout time.Duration) (*ssh.Client, error) {
 
 // findLocalBinary locates shuttle_linux next to the current executable.
 func findLocalBinary() (string, error) {
-	exePath, _ := os.Executable()
-	localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
-	if _, err := os.Stat(localBin); err == nil {
-		return localBin, nil
+	exePath, err := os.Executable()
+	if err == nil {
+		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
+		if _, err := os.Stat(localBin); err == nil {
+			return localBin, nil
+		}
 	}
+	// Fallback: look in current working directory.
 	if _, err := os.Stat("shuttle_linux"); err == nil {
 		return "shuttle_linux", nil
 	}

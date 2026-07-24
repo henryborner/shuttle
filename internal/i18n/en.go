@@ -2,12 +2,14 @@
 // en.go — 英语翻译
 package i18n
 
+import "github.com/henryborner/shuttle/internal/util"
+
 func init() {
 	register(EN, map[string]string{
 		// App
 		"app.title":        "Shuttle",
 		"app.subtitle":     "Incremental File Sync",
-		"app.version":      " v0.1.5.10",
+		"app.version":      " v" + util.Version,
 		"app.connected":    "Connected",
 		"app.disconnected": "Disconnected",
 

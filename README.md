@@ -175,7 +175,7 @@ shuttle version
 shuttle agent remove myserver
 ```
 
-该命令会先查找 agent 位置，执行 `shuttle version` 验证确认为 Shuttle（非同名无关二进制），确认后才删除。
+该命令会先查找 agent 位置，通过唯一标识验证确认为 Shuttle（非同名无关二进制），确认后才删除。
 
 **TUI 方式**：在服务器页面删除服务器时，按 `D`（而非 `Y`）可同时清理远端 agent。
 
