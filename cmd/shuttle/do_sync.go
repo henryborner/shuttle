@@ -155,9 +155,14 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 
 	// 应用配置中的哈希算法
 	if algoName != "" {
-		delta.SetDefault(algoName)
+		if err := delta.SetDefault(algoName); err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid --algo '%s': %v\n", algoName, err)
+			os.Exit(1)
+		}
 	} else if cfg.Checksum != "" {
-		delta.SetDefault(cfg.Checksum)
+		if err := delta.SetDefault(cfg.Checksum); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid checksum '%s' in config: %v\n", cfg.Checksum, err)
+		}
 	}
 
 	// workers override
@@ -321,9 +326,14 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 
 	// Apply checksum default
 	if algoName != "" {
-		delta.SetDefault(algoName)
+		if err := delta.SetDefault(algoName); err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid --algo '%s': %v\n", algoName, err)
+			os.Exit(1)
+		}
 	} else if cfg.Checksum != "" {
-		delta.SetDefault(cfg.Checksum)
+		if err := delta.SetDefault(cfg.Checksum); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid checksum '%s' in config: %v\n", cfg.Checksum, err)
+		}
 	}
 	if workers <= 0 {
 		workers = cfg.Workers
