@@ -71,6 +71,8 @@ tasks:
 | `shuttle config` | Full config summary |
 | `shuttle test <server>` | Test SSH connection |
 | `shuttle init` | Generate config template |
+| `shuttle tui` | Launch TUI from terminal |
+| `shuttle version` | Version and available checksums |
 
 ### push Flags
 
@@ -79,7 +81,8 @@ tasks:
 | `--dry-run` | Preview only, no changes |
 | `-v` | Verbose output |
 | `-w N` | Parallel workers (default 4) |
-| `--algo md5\|xxh64\|sha256` | Checksum algorithm |
+| `--algo md5\|xxh64\|sha256\|xxh3` | Checksum algorithm |
+| `-c`, `--config <path>` | Config file path (default syncd.yaml) |
 
 ## Shortcuts
 
@@ -91,6 +94,7 @@ tasks:
 | `Ctrl+T` | Test server connection |
 | `P` | Edit protect list |
 | `Tab` | Toggle file browser |
+| `Q`, `Ctrl+C` | Quit TUI |
 
 ## How It Works
 
@@ -98,8 +102,8 @@ tasks:
 
 Shuttle uses the rsync delta-transfer algorithm to minimize network traffic:
 
-1. **Chunking** — The source file is split into fixed-size blocks (default 2048 bytes)
-2. **Signatures** — Two checksums are computed per block: a fast rolling checksum (for quick matching) and a strong checksum (xxh64/md5/sha256, for final verification)
+1. **Chunking** — The source file is split into dynamically-sized blocks (small files ~700B, large files auto-scaled, max 128KB)
+2. **Signatures** — Two checksums are computed per block: a fast rolling checksum (for quick matching) and a strong checksum (xxh64/xxh3/md5/sha256, for final verification)
 3. **Matching** — The remote side receives the signature list and slides a window over its copy of the file to find matching blocks
 4. **Delta** — Only non-matching byte sequences (literals) are transmitted; matching blocks are referenced by index
 5. **Reconstruction** — The remote side follows delta instructions: copy matching blocks from the existing file + insert new data
@@ -112,7 +116,7 @@ Shuttle uses its own binary wire protocol (not standard rsync). Key parameters:
 
 - **CHAR_OFFSET = 31**: character offset parameter affecting rolling checksum collision properties
 - **Default strong checksum = xxh64**: 64-bit xxHash, balancing speed and collision resistance
-- md5 (128-bit) and sha256 (256-bit) available as alternatives
+- xxh3 (128-bit xxH3), md5 (128-bit), and sha256 (256-bit) available as alternatives
 
 ### Server Protection
 
