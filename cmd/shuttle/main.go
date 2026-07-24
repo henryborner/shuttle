@@ -536,8 +536,8 @@ Delete Safety Notes
 
 Strong Checksum Algorithms
 ------------------------
-  xxh64      64-bit xxHash (default), fastest -- good for LAN/SSD
-  xxh3       128-bit xxH3, fast non-crypto hash with wider output (~2⁻⁶⁴ collision)
+  xxh64      64-bit xxHash, fastest -- good for LAN/SSD (example default)
+  xxh3       128-bit xxh3, fast non-crypto hash with wider output
   md5        128-bit MD5, best cross-platform compatibility
   sha256     256-bit SHA-2, strongest -- use when integrity matters most
   (All algorithms have SIMD-accelerated assembly paths on amd64.)

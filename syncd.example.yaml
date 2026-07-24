@@ -15,7 +15,7 @@ servers:
     user: deploy
     key_file: ~/.ssh/id_ed25519
     # password: your_password  # 不推荐用密码
-    protect:                 # 保护列表：匹配的远端文件绝不覆盖/删除
+    protect:                 # 保护列表：匹配的远端文件绝不覆盖/删除；以/结尾=递归保护整个目录
       - "*.db"
       - "*.pem"
       - "config.yaml"

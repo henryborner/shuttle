@@ -74,10 +74,18 @@ Each server can define glob patterns that prevent remote files from being overwr
 servers:
   - name: myserver
     protect:
-      - "*.db"        # all database files
+      - "*.db"        # all database files (glob basename)
       - "*.pem"       # private keys
       - "config.yaml" # specific config
+      - "secrets/"     # entire directory tree (trailing / = recursive)
+      - "backups/*.gz" # glob path match
 ```
+
+Pattern types:
+- `*.db` — glob match against the file's basename (any path)
+- `config.yaml` — exact basename match
+- `secrets/` — trailing `/` triggers recursive prefix match (protects entire directory tree)
+- `backups/*.gz` — full path glob match
 
 Protected files are:
 - Never overwritten during sync
