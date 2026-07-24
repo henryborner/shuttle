@@ -18,7 +18,7 @@ shuttle push web           # sync a task
 - **SFTP/SSH** — Local → remote with auto key detection
 - **mmap** — Memory-mapped I/O for large file comparison
 - **Bilingual** — EN/ZH toggle in settings
-- **Single binary** — `shuttle.exe`, zero extra dependencies
+- **Single binary** — `shuttle.exe`, zero runtime dependencies
 
 ## Install
 
@@ -89,10 +89,10 @@ tasks:
 | `--flat` | Ad-hoc: flat mapping, no source folder wrapping |
 | `--checksum` | Ad-hoc: use checksum to detect changes |
 | `--exclude <pattern,...>` | Ad-hoc: exclude matching patterns |
-| `--no-delta` | Force full upload (auto-enabled when agent absent) |
+| `--no-delta` | Force full upload, skip delta signature matching |
 | `--dry-run` | Preview only, no changes |
 | `-v` | Verbose output |
-| `-w N` | Parallel workers (default 4) |
+| `-w N` | Parallel workers (0=config default, 1=serial) |
 | `--algo md5\|xxh64\|sha256\|xxh3` | Checksum algorithm |
 | `-c`, `--config <path>` | Config file path (default syncd.yaml) |
 
@@ -180,7 +180,7 @@ SSH into the remote server and run:
 
 ```bash
 shuttle version
-# Output: Shuttle v0.1.5.9  Go: go1.xx  OS: linux  Arch: amd64  Strong: xxh64  Algos: ...
+# Output: Shuttle v0.1.5.12  Go: go1.xx  OS: linux  Arch: amd64  Strong: md5  Algos: ...
 ```
 
 Seeing version info means the agent is installed correctly.
@@ -227,7 +227,7 @@ If files are identical on both ends, only the signature list (a few KB) is trans
 Shuttle uses its own binary wire protocol (not standard rsync). Key parameters:
 
 - **CHAR_OFFSET = 31**: character offset parameter affecting rolling checksum collision properties
-- **Default strong checksum = xxh64**: 64-bit xxHash, balancing speed and collision resistance
+- **Default strong checksum = md5**: 128-bit, balancing speed and collision resistance
 - xxh3 (128-bit xxH3), md5 (128-bit), and sha256 (256-bit) available as alternatives
 
 ### Server Protection
@@ -237,9 +237,9 @@ Each server can have a protect list (glob patterns). Matching remote files are *
 ### Remote Agent
 
 Shuttle connects to Linux servers via SSH and runs a lightweight `shuttle_linux` agent on the remote side. The agent handles:
-- Scanning the remote filesystem
 - Receiving signature lists and performing block matching
 - Reconstructing files from delta instructions
+- Caching block signatures for faster repeat syncs
 
 The agent can be deployed or updated from the TUI servers page.
 
