@@ -23,7 +23,8 @@ type SyncOptions struct {
 	DryRun   bool
 	SkipDots bool // skip files/dirs starting with "." (default true for safety) / 跳过.开头的文件
 	Workers  int  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
-	Flat     bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
+	Flat    bool // map content directly, don't wrap with source folder name / 直接映射，不套源文件夹名
+	NoDelta bool // force full upload, skip delta signature matching / 强制全量上传，跳过 delta 签名匹配
 }
 
 type SyncStats struct {
@@ -157,7 +158,26 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			// checksum mode: still do delta content verification when size+mtime match (read-only remote)
 			// checksum 模式：size+mtime 对上时仍进 delta 做内容校验（远端只读不写）
 			if needUpd || opts.Checksum {
-				deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
+				if opts.NoDelta && !opts.DryRun {
+					// No delta — upload whole file directly
+					var fe error
+					if !opts.DryRun {
+						fe = e.uploadFile(lf, remotePath)
+					}
+					stats.UpdatedFiles++
+					stats.SentBytes += lf.Size
+					e.hook.OnFileDone(FileEvent{
+						RelPath: relPath, RemotePath: remotePath,
+						FileSize: lf.Size, BytesSent: lf.Size,
+						IsUpdated: true, Error: fe,
+						StartTime: start, Duration: time.Since(start),
+					})
+					if fe != nil {
+						stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", relPath, fe))
+					}
+				} else {
+					deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
+				}
 			} else {
 				stats.SkippedFiles++
 				e.hook.OnFileDone(FileEvent{

@@ -32,6 +32,7 @@ var (
 	adHocFlat     bool
 	adHocChecksum bool
 	adHocExclude  []string
+	noDelta       bool
 
 	versionStr = "0.1.5.9"
 	rootCmd    = &cobra.Command{
@@ -93,6 +94,7 @@ Quick reference:
 	pushCmd.Flags().BoolVar(&adHocFlat, "flat", false, "ad-hoc: map content directly without source folder wrapping")
 	pushCmd.Flags().BoolVar(&adHocChecksum, "checksum", false, "ad-hoc: use checksum to detect changes")
 	pushCmd.Flags().StringSliceVar(&adHocExclude, "exclude", nil, "ad-hoc: exclude patterns (comma-separated)")
+	pushCmd.Flags().BoolVar(&noDelta, "no-delta", false, "force full upload, skip delta signature matching")
 	rootCmd.AddCommand(pushCmd)
 
 	// tui
@@ -241,14 +243,14 @@ func runVersion(cmd *cobra.Command, args []string) {
 func runPush(cmd *cobra.Command, args []string) {
 	// Ad-hoc mode: --source + --target specified
 	if adHocSource != "" {
-		doAdHocSync(adHocSource, adHocTarget, adHocDelete, adHocFlat, adHocChecksum, adHocExclude, cfgPath, dryRun, verbose, workers, algoName)
+		doAdHocSync(adHocSource, adHocTarget, adHocDelete, adHocFlat, adHocChecksum, adHocExclude, noDelta, cfgPath, dryRun, verbose, workers, algoName)
 		return
 	}
 	taskName := ""
 	if len(args) > 0 {
 		taskName = args[0]
 	}
-	doSync(taskName, cfgPath, dryRun, verbose, workers, algoName)
+	doSync(taskName, cfgPath, dryRun, verbose, workers, algoName, noDelta)
 }
 
 func runConfig(cmd *cobra.Command, args []string) {

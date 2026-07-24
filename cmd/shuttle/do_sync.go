@@ -116,7 +116,7 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 }
 
 // doSync 执行同步任务
-func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoName string) {
+func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoName string, noDelta bool) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
@@ -200,6 +200,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 			SkipDots: !task.Options.ShowDots,
 			Workers:  workers,
 			Flat:     task.Options.Flat,
+			NoDelta:  noDelta,
 		})
 
 		sftp.Close()
@@ -244,7 +245,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 
 // doAdHocSync runs a sync directly from --source to --target, bypassing config tasks.
 // doAdHocSync 使用 --source/--target 参数直接同步，不依赖配置中的 task。
-func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []string, cfgPath string, dryRun, verbose bool, workers int, algoName string) {
+func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []string, noDelta bool, cfgPath string, dryRun, verbose bool, workers int, algoName string) {
 	if source == "" {
 		fmt.Fprintln(os.Stderr, "Error: --source is required")
 		os.Exit(1)
@@ -328,6 +329,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 		SkipDots: true,
 		Workers:  workers,
 		Flat:     flat,
+		NoDelta:  noDelta,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  Sync failed: %v\n", err)
