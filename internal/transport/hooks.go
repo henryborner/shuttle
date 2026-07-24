@@ -38,6 +38,8 @@ type SyncHook interface {
 	OnSyncDone(stats *SyncStats) error
 }
 
+// NopHook is a no-op sync hook (all methods are empty).
+// NopHook 空的同步钩子（所有方法均为空操作）。
 type NopHook struct{}
 
 func (NopHook) OnSyncStart(string, int) error       { return nil }

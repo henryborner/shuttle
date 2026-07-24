@@ -1,5 +1,6 @@
 // mmap.go — cross-platform memory-mapped file I/O
 // Avoids loading entire file into RAM for checksum/delta operations.
+// mmap.go — 跨平台内存映射文件 I/O，避免将整个文件加载到 RAM 中。
 package util
 
 import (
@@ -9,8 +10,8 @@ import (
 )
 
 // MmapFile maps a file into memory read-only.
-// Returns a []byte spanning the entire file. The OS pages data on demand,
-// so memory usage is proportional to working set, not file size.
+// Returns a []byte spanning the entire file. The OS pages data on demand.
+// MmapFile 将文件以只读方式映射到内存。OS 按需换页，内存占用与工作集而非文件大小成正比。
 func MmapFile(f *os.File) ([]byte, error) {
 	fi, err := f.Stat()
 	if err != nil {
@@ -23,7 +24,8 @@ func MmapFile(f *os.File) ([]byte, error) {
 	return mmap(f, size)
 }
 
-// Munmap unmaps the memory region.
+// Munmap unmaps the memory region previously mapped by MmapFile.
+// Munmap 解除 MmapFile 建立的内存映射。
 func Munmap(data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -32,6 +34,8 @@ func Munmap(data []byte) error {
 }
 
 // MmapReadOnly opens and mmaps a file by path, returning data + a closer function.
+// The closer handles both munmap and file close; call it when done.
+// MmapReadOnly 按路径打开并 mmap 文件，返回数据 + 清理函数（处理 munmap + 关闭文件）。
 func MmapReadOnly(path string) ([]byte, func() error, error) {
 	f, err := os.Open(path)
 	if err != nil {

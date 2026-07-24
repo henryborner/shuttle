@@ -16,6 +16,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// RemoteBrowser provides an interactive SFTP file browser for remote servers.
+// RemoteBrowser 交互式 SFTP 远程文件浏览器。
 type RemoteBrowser struct {
 	server    config.Server
 	client    *sftp.Client
@@ -30,6 +32,8 @@ type RemoteBrowser struct {
 	confirm   int
 }
 
+// NewRemoteBrowser creates a remote file browser and connects to the server.
+// NewRemoteBrowser 创建远程文件浏览器并连接到服务器。
 func NewRemoteBrowser(srv config.Server) *RemoteBrowser {
 	rb := &RemoteBrowser{server: srv, root: "/"}
 	rb.connect()
@@ -307,9 +311,13 @@ func (rb *RemoteBrowser) removeRecursive(dir string) error {
 	return rb.client.RemoveDirectory(dir)
 }
 
+// SelectedPath returns the path the user selected, or empty if cancelled.
+// SelectedPath 返回用户选择的路径，取消时为空。
 func (rb *RemoteBrowser) SelectedPath() string { return rb.selected }
 func (rb *RemoteBrowser) IsDone() bool         { return rb.done }
 func (rb *RemoteBrowser) WasCancelled() bool   { return rb.cancelled }
+// Close disconnects from the remote server.
+// Close 断开与远程服务器的连接。
 func (rb *RemoteBrowser) Close() {
 	if rb.client != nil {
 		rb.client.Close()

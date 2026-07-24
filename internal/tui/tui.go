@@ -102,6 +102,8 @@ func pageNames() []string {
 	}
 }
 
+// Model is the top-level Bubble Tea model for the TUI.
+// Model TUI 顶层 Bubble Tea 模型，管理所有页面和同步状态。
 type Model struct {
 	width, height int
 	activePage    Page
@@ -123,6 +125,8 @@ type Model struct {
 	deleteConfirm *deleteConfirmState // 多级 delete 确认
 }
 
+// New creates a new TUI model from the given config.
+// New 根据配置创建 TUI 模型。cfg 为 nil 时退化为空配置。
 func New(cfg *config.Config, cfgPath string) *Model {
 	if cfg == nil {
 		cfg = &config.Config{} // fallback empty config, prevents nil deref below
@@ -759,6 +763,8 @@ func sortOrphans(files []string) {
 	}
 }
 
+// Run starts the Bubble Tea TUI program and blocks until exit.
+// Run 启动 Bubble Tea TUI 程序，阻塞直到退出。
 func Run(cfg *config.Config, cfgPath string) error {
 	m := New(cfg, cfgPath)
 	p := tea.NewProgram(m, tea.WithAltScreen())

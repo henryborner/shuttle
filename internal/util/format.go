@@ -4,10 +4,12 @@ package util
 import "fmt"
 
 // Version is the current Shuttle version string.
+// Version 当前 Shuttle 版本号。
 const Version = "0.1.5.13"
 
 // FormatBytes formats a byte count as a human-readable string using binary
 // prefixes (e.g. "1.5 MiB", base-1024).
+// FormatBytes 将字节数格式化为人类可读字符串（如 "1.5 MiB"，基数为 1024）。
 func FormatBytes(b int64) string {
 	if b < 0 {
 		return "0 B"
@@ -24,7 +26,8 @@ func FormatBytes(b int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-// Pad pads s to width with spaces on the right.
+// Pad pads s to width with trailing spaces (right-aligned would be different).
+// Pad 将字符串右侧填充空格至指定宽度。
 func Pad(s string, width int) string {
 	if len(s) >= width {
 		return s

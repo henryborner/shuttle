@@ -27,6 +27,8 @@ type SyncOptions struct {
 	NoDelta  bool // force full upload, skip delta signature matching / 强制全量上传，跳过 delta 签名匹配
 }
 
+// SyncStats holds aggregate statistics for a sync operation.
+// SyncStats 同步操作的聚合统计信息。
 type SyncStats struct {
 	TotalFiles     int
 	NewFiles       int
@@ -42,15 +44,21 @@ type SyncStats struct {
 	Errors         []error
 }
 
+// SyncEngine executes file sync between local and remote using the rsync delta algorithm.
+// SyncEngine 基于 rsync delta 算法执行本地到远端的文件同步。
 type SyncEngine struct {
 	transport Transport
 	hook      SyncHook
 }
 
+// NewSyncEngine creates a sync engine backed by the given transport.
+// NewSyncEngine 基于指定传输层创建同步引擎。
 func NewSyncEngine(tr Transport) *SyncEngine {
 	return &SyncEngine{transport: tr, hook: NopHook{}}
 }
 
+// SetHook registers a sync event hook for progress reporting.
+// SetHook 注册同步事件钩子，用于进度报告。
 func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 
 // Sync executes the sync operation.
@@ -594,6 +602,8 @@ func (c *writeCounter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// LocalFileInfo describes a local file discovered during scanning.
+// LocalFileInfo 本地扫描发现的文件信息。
 type LocalFileInfo struct {
 	Path    string
 	Size    int64
@@ -601,6 +611,8 @@ type LocalFileInfo struct {
 	IsDir   bool
 }
 
+// ScanLocalFiles recursively scans a local directory, applying exclude patterns and dot-file filtering.
+// ScanLocalFiles 递归扫描本地目录，应用排除模式和隐藏文件过滤。
 func ScanLocalFiles(root string, excludes []string, skipDots bool) ([]LocalFileInfo, error) {
 	var files []LocalFileInfo
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

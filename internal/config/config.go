@@ -10,6 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Task defines a sync task: a local source path mapped to a remote target.
+// Task 同步任务：本地源路径 → 远端目标路径。
 type Task struct {
 	Name    string  `yaml:"name"`
 	Source  string  `yaml:"source"`
@@ -27,6 +29,8 @@ type Options struct {
 	ShowDots bool     `yaml:"show_dots"` // show hidden files/dirs (starting with .) / 显示.开头的隐藏文件
 }
 
+// Server defines an SSH server connection.
+// Server SSH 服务器连接配置。
 type Server struct {
 	Name    string   `yaml:"name"`
 	Host    string   `yaml:"host"`
@@ -48,6 +52,8 @@ type Config struct {
 	Tasks    []Task   `yaml:"tasks"`
 }
 
+// Load reads and parses a syncd.yaml config file.
+// Load 读取并解析 syncd.yaml 配置文件。
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -62,6 +68,8 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// Save serializes the config to YAML and writes it to disk.
+// Save 序列化配置为 YAML 并写入磁盘。
 func (c *Config) Save(path string) error {
 	if c.Version == "" {
 		c.Version = "1.0"
@@ -106,6 +114,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// GetTask looks up a task by name.
+// GetTask 按名称查找任务。
 func (c *Config) GetTask(name string) *Task {
 	for i := range c.Tasks {
 		if c.Tasks[i].Name == name {
@@ -126,6 +136,9 @@ func (c *Config) GetServer(name string) *Server {
 	return nil
 }
 
+// ParseTarget splits "server:path" into server name and remote path.
+// Handles Windows drive letters (C:\...) and IPv6 addresses ([::1]:/path).
+// ParseTarget 解析 "server:path" 格式，处理 Windows 盘符和 IPv6 地址。
 func ParseTarget(target string) (serverName, path string) {
 	// IPv6 address in brackets: [::1]:/path or [::1]:path
 	if strings.HasPrefix(target, "[") {

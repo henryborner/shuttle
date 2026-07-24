@@ -18,6 +18,7 @@ var standardKeyNames = []string{"id_ed25519", "id_rsa", "id_ecdsa"}
 // ReadSSHKey tries to read and parse an SSH private key.
 // If keyPath is non-empty it is tried first; otherwise standard ~/.ssh keys are tried.
 // Returns the parsed signer, or an error if no key could be loaded.
+// ReadSSHKey 尝试读取并解析 SSH 私钥。优先使用指定路径，其次尝试 ~/.ssh/ 下的标准密钥。
 func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -63,6 +64,8 @@ func ReadSSHKey(keyPath string) (ssh.Signer, error) {
 }
 
 // BuildAuthMethods builds SSH auth methods from configured key + optional password.
+// Key auth is tried first, then password as fallback.
+// BuildAuthMethods 根据配置的密钥和可选密码构建 SSH 认证方法列表（密钥优先，密码备用）。
 func BuildAuthMethods(keyPath, password string) []ssh.AuthMethod {
 	var methods []ssh.AuthMethod
 	signer, err := ReadSSHKey(keyPath)
@@ -78,7 +81,7 @@ func BuildAuthMethods(keyPath, password string) []ssh.AuthMethod {
 // CheckHostKey returns an ssh.HostKeyCallback that verifies the host key
 // against the user's ~/.ssh/known_hosts file. Unknown hosts are automatically
 // added (trust-on-first-use). Changed keys are rejected.
-// If the known_hosts file cannot be read, connections are rejected (fail-secure).
+// CheckHostKey 返回 host key 验证回调：自动添加未知主机（TOFU），拒绝已变更的 key。
 func CheckHostKey() ssh.HostKeyCallback {
 	home, err := os.UserHomeDir()
 	if err != nil {

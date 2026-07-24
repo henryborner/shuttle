@@ -17,20 +17,24 @@ var (
 	strings      = make(map[Lang]map[string]string)
 )
 
-// SetLang 切换语言
+// SetLang switches the current UI language.
+// SetLang 切换当前界面语言。
 func SetLang(l Lang) {
 	mu.Lock()
 	current = l
 	mu.Unlock()
 }
 
-// Current 返回当前语言
+// Current returns the current UI language.
+// Current 返回当前界面语言。
 func Current() Lang {
 	mu.RLock()
 	defer mu.RUnlock()
 	return current
 }
 
+// T translates a key to the current language. Returns the key itself if not found.
+// T 根据当前语言翻译 key。未找到时返回 key 本身。
 func T(key string) string {
 	mu.RLock()
 	defer mu.RUnlock()

@@ -11,6 +11,8 @@ import (
 	"github.com/henryborner/shuttle/internal/i18n"
 )
 
+// FileBrowser provides an interactive local file system browser.
+// FileBrowser 交互式本地文件系统浏览器。
 type FileBrowser struct {
 	root      string
 	items     []fileItem
@@ -27,6 +29,8 @@ type fileItem struct {
 	isDir bool
 }
 
+// NewFileBrowser creates a local file browser starting at the given path.
+// NewFileBrowser 创建本地文件浏览器，从指定路径开始。
 func NewFileBrowser(startPath string) *FileBrowser {
 	fb := &FileBrowser{root: filepath.Clean(startPath)}
 	fb.loadDir(fb.root)
@@ -214,6 +218,10 @@ func (fb *FileBrowser) doDelete() {
 	}
 }
 
+// SelectedPath returns the path the user selected, or empty if cancelled.
+// SelectedPath returns the path the user selected, or empty if cancelled.
 func (fb *FileBrowser) SelectedPath() string { return fb.selected }
-func (fb *FileBrowser) IsDone() bool         { return fb.done }
-func (fb *FileBrowser) WasCancelled() bool   { return fb.cancelled }
+// IsDone reports whether the browser has finished.
+func (fb *FileBrowser) IsDone() bool { return fb.done }
+// WasCancelled reports whether the user cancelled.
+func (fb *FileBrowser) WasCancelled() bool { return fb.cancelled }
