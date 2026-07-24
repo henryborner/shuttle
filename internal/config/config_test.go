@@ -129,8 +129,8 @@ func TestValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "valid",
-			cfg:     &Config{
+			name: "valid",
+			cfg: &Config{
 				Servers: []Server{{Name: "srv", Host: "1.2.3.4"}},
 				Tasks:   []Task{{Name: "t", Source: "/s", Target: "srv:/t"}},
 			},
