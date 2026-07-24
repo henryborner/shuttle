@@ -120,6 +120,7 @@ type Model struct {
 	sp            syncProgress
 	syncErr       string
 	syncChan      chan syncMsg
+	quitCh        chan struct{} // closed when TUI is quitting
 	deleteConfirm *deleteConfirmState // 多级 delete 确认
 }
 
@@ -148,6 +149,7 @@ func New(cfg *config.Config, cfgPath string) *Model {
 
 func (m *Model) Init() tea.Cmd {
 	m.syncChan = make(chan syncMsg, 100)
+	m.quitCh = make(chan struct{})
 	return m.listenSync()
 }
 
@@ -280,6 +282,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			close(m.quitCh)
 			return m, tea.Quit
 		case "left":
 			if m.activePage > 0 {
@@ -511,37 +514,45 @@ func (m *Model) startSync(task config.Task) {
 	m.sp = syncProgress{taskName: task.Name}
 
 	go func() {
+		send := func(msg syncMsg) bool {
+			select {
+			case m.syncChan <- msg:
+				return true
+			case <-m.quitCh:
+				return false
+			}
+		}
 		if err := m.cfg.Validate(); err != nil {
-			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf("config invalid: %v", err)}
+			send(syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf("config invalid: %v", err)})
 			return
 		}
 		serverName, remotePath := config.ParseTarget(task.Target)
 		if serverName == "" {
-			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: i18n.T("sync.no_server")}
+			send(syncMsg{kind: "done", taskName: task.Name, err: i18n.T("sync.no_server")})
 			return
 		}
 		srv := m.cfg.GetServer(serverName)
 		if srv == nil {
-			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: i18n.T("sync.server_not_found")}
+			send(syncMsg{kind: "done", taskName: task.Name, err: i18n.T("sync.server_not_found")})
 			return
 		}
 
-		m.syncChan <- syncMsg{kind: "file", taskName: task.Name, file: i18n.T("sync.connect_status")}
+		send(syncMsg{kind: "file", taskName: task.Name, file: i18n.T("sync.connect_status")})
 
 		sftp := transport.NewSFTP(transport.SFTPConfig{
 			Host: srv.Host, Port: srv.Port,
 			User: srv.User, KeyFile: srv.KeyFile, Pass: srv.Pass,
 		})
 		if err := sftp.Connect(); err != nil {
-			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf(i18n.T("sync.connect_err"), err)}
+			send(syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf(i18n.T("sync.connect_err"), err)})
 			return
 		}
 		defer sftp.Close()
 
 		engine := transport.NewSyncEngine(sftp)
-		engine.SetHook(&tuiSyncHook{ch: m.syncChan, taskName: task.Name})
+		engine.SetHook(&tuiSyncHook{ch: m.syncChan, quitCh: m.quitCh, taskName: task.Name})
 
-		m.syncChan <- syncMsg{kind: "file", taskName: task.Name, file: fmt.Sprintf(i18n.T("sync.local_fmt"), task.Source)}
+		send(syncMsg{kind: "file", taskName: task.Name, file: fmt.Sprintf(i18n.T("sync.local_fmt"), task.Source)})
 
 		stats, err := engine.Sync(transport.SyncOptions{
 			Source: task.Source, Target: remotePath,
@@ -552,7 +563,7 @@ func (m *Model) startSync(task config.Task) {
 		})
 
 		if err != nil {
-			m.syncChan <- syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf("%v", err)}
+			send(syncMsg{kind: "done", taskName: task.Name, err: fmt.Sprintf("%v", err)})
 			return
 		}
 
@@ -560,40 +571,48 @@ func (m *Model) startSync(task config.Task) {
 		if stats.TotalBytes > 0 && stats.SentBytes < stats.TotalBytes {
 			savedPct = float64(stats.TotalBytes-stats.SentBytes) / float64(stats.TotalBytes) * 100
 		}
-		m.syncChan <- syncMsg{
+		send(syncMsg{
 			kind: "done", taskName: task.Name, savedPct: savedPct,
 			fileDone: stats.TotalFiles, fileTotal: stats.TotalFiles,
 			bytesSent: stats.SentBytes, bytesTotal: stats.TotalBytes,
 			newFiles: stats.NewFiles, updatedFiles: stats.UpdatedFiles,
 			deletedFiles: stats.DeletedFiles, skippedFiles: stats.SkippedFiles,
 			protectedFiles: stats.ProtectedFiles,
-		}
+		})
 	}()
 }
 
 // tuiSyncHook implements transport.SyncHook for TUI progress
 type tuiSyncHook struct {
 	ch        chan<- syncMsg
+	quitCh    <-chan struct{}
 	taskName  string
 	filesDone int
 }
 
+func (h *tuiSyncHook) send(msg syncMsg) {
+	select {
+	case h.ch <- msg:
+	case <-h.quitCh:
+	}
+}
+
 func (h *tuiSyncHook) OnSyncStart(name string, total int) error {
-	h.ch <- syncMsg{kind: "progress", taskName: h.taskName, fileTotal: total}
+	h.send(syncMsg{kind: "progress", taskName: h.taskName, fileTotal: total})
 	return nil
 }
 func (h *tuiSyncHook) OnFileStart(path string, size int64) error {
-	h.ch <- syncMsg{kind: "file", taskName: h.taskName, file: path, bytesTotal: size}
+	h.send(syncMsg{kind: "file", taskName: h.taskName, file: path, bytesTotal: size})
 	return nil
 }
 func (h *tuiSyncHook) OnFileProgress(path string, sent, total int64) {
-	h.ch <- syncMsg{kind: "progress", taskName: h.taskName, bytesSent: sent, bytesTotal: total}
+	h.send(syncMsg{kind: "progress", taskName: h.taskName, bytesSent: sent, bytesTotal: total})
 }
 func (h *tuiSyncHook) OnFileDone(evt transport.FileEvent) error {
 	h.filesDone++
-	h.ch <- syncMsg{kind: "progress", taskName: h.taskName, fileDone: h.filesDone}
+	h.send(syncMsg{kind: "progress", taskName: h.taskName, fileDone: h.filesDone})
 	if evt.Error != nil {
-		h.ch <- syncMsg{kind: "file", taskName: h.taskName, file: evt.RelPath + " " + evt.Error.Error()}
+		h.send(syncMsg{kind: "file", taskName: h.taskName, file: evt.RelPath + " " + evt.Error.Error()})
 	}
 	return nil
 }
