@@ -123,7 +123,9 @@ func (t *SFTPTransport) PutFile(path string, reader io.Reader, size int64) error
 	}
 	parent := filepath.ToSlash(filepath.Dir(path))
 	if parent != "." && parent != "/" {
-		t.MkdirAll(parent)
+		if err := t.MkdirAll(parent); err != nil {
+			return fmt.Errorf("create directory %s: %w", parent, err)
+		}
 	}
 	dst, err := t.client.Create(path)
 	if err != nil {
@@ -336,7 +338,6 @@ func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.
 type sessionReadCloser struct {
 	io.Reader
 	session *ssh.Session
-	once    int32 // atomic guard for Close
 }
 
 func (s *sessionReadCloser) Close() error {

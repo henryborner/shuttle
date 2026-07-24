@@ -3,7 +3,9 @@
 package agent
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,10 +71,23 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 			s.Close()
 			continue
 		}
-		s.Start(dp.cmd)
-		stdin.Write(binData)
+		if err := s.Start(dp.cmd); err != nil {
+			lastErr = err
+			s.Close()
+			continue
+		}
+		if _, err := io.Copy(stdin, bytes.NewReader(binData)); err != nil {
+			lastErr = err
+			stdin.Close()
+			s.Close()
+			continue
+		}
 		stdin.Close()
-		s.Wait()
+		if err := s.Wait(); err != nil {
+			lastErr = err
+			s.Close()
+			continue
+		}
 		s.Close()
 
 		out, err := runRemoteCmd(client, dp.path+" version")
