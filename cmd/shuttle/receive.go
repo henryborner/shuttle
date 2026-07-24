@@ -45,17 +45,20 @@ func cacheLoad(filePath string, fi os.FileInfo, blockSize int32, algo string) ([
 
 // cacheSave saves a wire-encoded signature to the cache.
 // Uses atomic write (tmp + rename) for safety.
-// cacheSave 将签名原子写入缓存。
-func cacheSave(filePath string, fi os.FileInfo, blockSize int32, algo string, data []byte) {
+// Returns an error if the cache cannot be written (non-fatal: sync still works).
+// cacheSave 将签名原子写入缓存。返回写入错误（非致命：同步仍可继续）。
+func cacheSave(filePath string, fi os.FileInfo, blockSize int32, algo string, data []byte) error {
 	cachePath := cachePathFor(filePath, fi, blockSize, algo)
 	dir := filepath.Dir(cachePath)
-	os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
 
 	tmp := cachePath + ".tmp"
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return // silent fail / 静默失败
+		return err
 	}
-	os.Rename(tmp, cachePath)
+	return os.Rename(tmp, cachePath)
 }
 
 // cachePathFor builds the cache file path from file identity.
@@ -140,7 +143,9 @@ func runReceive(cmd *cobra.Command, args []string) {
 		}
 		sigWire = buf.Bytes()
 		if !noCache {
-			cacheSave(filePath, fi, blockSize, algo, sigWire)
+			if err := cacheSave(filePath, fi, blockSize, algo, sigWire); err != nil {
+				fmt.Fprintf(os.Stderr, "RECEIVER WARNING: signature cache save failed: %v\n", err)
+			}
 		}
 	}
 
