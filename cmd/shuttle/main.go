@@ -25,6 +25,14 @@ var (
 	algoName   string
 	schemaFlag bool
 
+	// ad-hoc push flags
+	adHocSource   string
+	adHocTarget   string
+	adHocDelete   bool
+	adHocFlat     bool
+	adHocChecksum bool
+	adHocExclude  []string
+
 	versionStr = "0.1.5.9"
 	rootCmd    = &cobra.Command{
 		Use:   "shuttle",
@@ -78,6 +86,13 @@ Quick reference:
 	pushCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print per-file transfer details and wire bytes sent")
 	pushCmd.Flags().IntVarP(&workers, "workers", "w", 0, "parallel delta workers (0 uses config default, 1=serial, max 8)")
 	pushCmd.Flags().StringVar(&algoName, "algo", "", "checksum algorithm: md5, sha256, xxh64, or xxh3 (overrides config)")
+	// ad-hoc mode: bypass config, sync directly from --source to --target
+	pushCmd.Flags().StringVar(&adHocSource, "source", "", "ad-hoc: local source path (file or directory)")
+	pushCmd.Flags().StringVar(&adHocTarget, "target", "", "ad-hoc: remote target (server:/path)")
+	pushCmd.Flags().BoolVar(&adHocDelete, "delete", false, "ad-hoc: delete remote files not in source")
+	pushCmd.Flags().BoolVar(&adHocFlat, "flat", false, "ad-hoc: map content directly without source folder wrapping")
+	pushCmd.Flags().BoolVar(&adHocChecksum, "checksum", false, "ad-hoc: use checksum to detect changes")
+	pushCmd.Flags().StringSliceVar(&adHocExclude, "exclude", nil, "ad-hoc: exclude patterns (comma-separated)")
 	rootCmd.AddCommand(pushCmd)
 
 	// tui
@@ -224,6 +239,11 @@ func runVersion(cmd *cobra.Command, args []string) {
 }
 
 func runPush(cmd *cobra.Command, args []string) {
+	// Ad-hoc mode: --source + --target specified
+	if adHocSource != "" {
+		doAdHocSync(adHocSource, adHocTarget, adHocDelete, adHocFlat, adHocChecksum, adHocExclude, cfgPath, dryRun, verbose, workers, algoName)
+		return
+	}
 	taskName := ""
 	if len(args) > 0 {
 		taskName = args[0]

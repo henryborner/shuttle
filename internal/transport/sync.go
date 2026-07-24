@@ -70,25 +70,25 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	remoteFiles := make(map[string]FileInfo)
-	// scan remote target root once; avoid repeated Walk for each subdirectory
-	// 从远端 target 根目录只遍历一次，避免对每个子目录重复 Walk
-	entries, listErr := e.transport.ListDirRecursive(opts.Target)
-	// Always use partial results even when the listing was truncated or had
-	// errors — an empty remoteFiles map would treat all local files as NEW
-	// and skip all deletions, which is wasteful but safe.
-	for _, f := range entries {
-		key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
-		// TrimLeft removes all leading slashes, handling edge cases like
-		// double-slashes from SFTP servers (e.g. /tmp//assets/file.js).
-		// TrimPrefix would only remove one, leaving a leading / that
-		// causes the key to mismatch localSet → false orphan → data loss.
-		key = strings.TrimLeft(key, "/")
-		remoteFiles[key] = f
-	}
-	if listErr != nil {
-		// Listing was truncated or had errors — remote view is incomplete.
-		// Sync proceeds safely (no deletions for invisible files) but some
-		// files may be unnecessarily re-uploaded.
+	remoteScanned := false
+
+	// Full recursive scan is only needed for --delete (to find orphan files).
+	// Without --delete, we Stat each remote file on demand — much faster for
+	// large directories like /tmp/.
+	// 全量递归扫描仅 --delete 需要（发现远端孤儿文件）。
+	// 不用 delete 时按需 Stat 每个远端文件，对大目录（如 /tmp/）快得多。
+	if opts.Delete {
+		entries, listErr := e.transport.ListDirRecursive(opts.Target)
+		for _, f := range entries {
+			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
+			key = strings.TrimLeft(key, "/")
+			remoteFiles[key] = f
+		}
+		remoteScanned = true
+		if listErr != nil {
+			// Listing was truncated or had errors — remote view is incomplete.
+			// Sync proceeds safely (no deletions for invisible files).
+		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
@@ -112,6 +112,13 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
+		if !exists && !remoteScanned {
+			// No full scan done — Stat just this file on remote
+			if fi, statErr := e.transport.Stat(remotePath); statErr == nil {
+				rf = fi
+				exists = true
+			}
+		}
 
 		// protect check: remote exists and matches protect pattern → skip
 		// 保护检查：远端已有且匹配 protect 模式 → 禁止覆盖
