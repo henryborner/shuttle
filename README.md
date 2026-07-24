@@ -69,6 +69,7 @@ tasks:
 | `shuttle push [name]` | 执行同步 |
 | `shuttle list` | 列出所有任务和服务器 |
 | `shuttle config` | 完整配置摘要 |
+| `shuttle config --schema` | 配置字段参考手册 |
 | `shuttle test <server>` | 测试 SSH 连接 + agent 状态 |
 | `shuttle deploy <server>` | 部署远端 agent |
 | `shuttle agent status <server>` | 查看 agent 安装状态 |
@@ -76,13 +77,21 @@ tasks:
 | `shuttle init` | 生成配置模板 |
 | `shuttle tui` | 命令行启动 TUI |
 | `shuttle version` | 版本和可用校验算法 |
+| `shuttle completion <shell>` | 生成 shell 自动补全脚本 |
 
 ### push 常用参数
 
 | 参数 | 说明 |
 |------|------|
+| `--source <path>` | ad-hoc：本地源路径（文件或目录） |
+| `--target <server:path>` | ad-hoc：远端目标路径 |
+| `--delete` | ad-hoc：删除远端多余文件 |
+| `--flat` | ad-hoc：扁平映射，不套源文件夹 |
+| `--checksum` | ad-hoc：使用校验和检测变化 |
+| `--exclude <pattern,...>` | ad-hoc：排除匹配模式的文件 |
+| `--no-delta` | 强制全量上传（无 agent 时自动启用） |
 | `--dry-run` | 模拟运行，不实际修改文件 |
-| `-v` | 详细输出 |
+| `-v` | 详细输出（显示每个文件的传输详情） |
 | `-w N` | 并行 worker 数（默认 4） |
 | `--algo md5\|xxh64\|sha256\|xxh3` | 校验和算法 |
 | `-c`, `--config <path>` | 指定配置文件路径（默认 syncd.yaml） |

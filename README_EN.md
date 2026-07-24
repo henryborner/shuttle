@@ -69,6 +69,7 @@ tasks:
 | `shuttle push [name]` | Sync tasks |
 | `shuttle list` | List all tasks and servers |
 | `shuttle config` | Full config summary |
+| `shuttle config --schema` | Config field reference manual |
 | `shuttle test <server>` | Test SSH connection + agent status |
 | `shuttle deploy <server>` | Deploy remote agent |
 | `shuttle agent status <server>` | Show agent installation status |
@@ -76,11 +77,19 @@ tasks:
 | `shuttle init` | Generate config template |
 | `shuttle tui` | Launch TUI from terminal |
 | `shuttle version` | Version and available checksums |
+| `shuttle completion <shell>` | Generate shell autocompletion script |
 
 ### push Flags
 
 | Flag | Description |
 |------|-------------|
+| `--source <path>` | Ad-hoc: local source path (file or directory) |
+| `--target <server:path>` | Ad-hoc: remote target path |
+| `--delete` | Ad-hoc: delete extra remote files |
+| `--flat` | Ad-hoc: flat mapping, no source folder wrapping |
+| `--checksum` | Ad-hoc: use checksum to detect changes |
+| `--exclude <pattern,...>` | Ad-hoc: exclude matching patterns |
+| `--no-delta` | Force full upload (auto-enabled when agent absent) |
 | `--dry-run` | Preview only, no changes |
 | `-v` | Verbose output |
 | `-w N` | Parallel workers (default 4) |
