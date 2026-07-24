@@ -420,8 +420,10 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	stdin, stdout, stderr, err := e.transport.Exec(cmd)
 	if err != nil {
 		// delta unavailable, fallback to full upload.
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta unavailable: %w", err)
+		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable"); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 
 	// read stderr concurrently
@@ -438,8 +440,10 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	if err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta decode signature: %w", err)
+		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed"); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 
 	// Open local file for streaming (no mmap, no full read into memory).
@@ -495,22 +499,28 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 	if err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta search: %w", err)
+		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 	// Flush remaining batch.
 	if err := flushBatch(); err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta encode: %w", err)
+		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 	// End-of-stream marker: count=0 tells receiver we're done.
 	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
 		stdin.Close()
 		<-stderrDone
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("delta eos: %w", err)
+		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 
 	// Instructions already streamed to remote via the callback above.
@@ -522,14 +532,27 @@ func (e *SyncEngine) uploadFileDelta(info localFileInfo, remotePath string, chec
 		// Remote process reported an error after receiving instructions.
 		// The remote uses atomic rename, so the original file should still be
 		// intact, but fall back to full upload to guarantee correctness.
-		_ = e.uploadFile(info, remotePath)
-		return info.Size, 0, fmt.Errorf("remote: %s", errBuf.String())
+		if fbErr := e.fallbackUpload(info, remotePath, "remote: "+strings.TrimSpace(errBuf.String())); fbErr != nil {
+			return info.Size, 0, fbErr
+		}
+		return info.Size, 0, nil
 	}
 
 	e.transport.SetModTime(remotePath, info.ModTime)
 
 	savedBytes = info.Size - eng.LiteralBytes
 	return wc.n, savedBytes, nil
+}
+
+// fallbackUpload attempts a full upload after delta fails.
+// If the full upload succeeds, it prints a warning to stderr and returns nil
+// (the file was synced, just not via delta). If it also fails, returns the error.
+func (e *SyncEngine) fallbackUpload(info localFileInfo, remotePath, reason string) error {
+	if err := e.uploadFile(info, remotePath); err != nil {
+		return fmt.Errorf("delta fallback upload failed: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "delta: %s (fell back to full upload for %s)\n", reason, filepath.Base(info.Path))
+	return nil
 }
 
 // writeCounter wraps an io.Writer and counts bytes written.

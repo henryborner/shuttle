@@ -1,5 +1,4 @@
 // main.go — Shuttle CLI entry point (Cobra)
-// main.go — Shuttle CLI entry point (Cobra)
 // main.go — Shuttle CLI 入口 (Cobra)
 package main
 
