@@ -336,14 +336,7 @@ func (m *serversModel) asyncDeploy() tea.Cmd {
 		KeyFile: strings.TrimSpace(m.formKey),
 		Pass:    strings.TrimSpace(m.formPass),
 	}
-
-	return func() tea.Msg {
-		path, version, err := agent.Deploy(srv)
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf("%s: %v\n%s", i18n.T("srv.deploy_err"), err, i18n.T("srv.manual_install"))}
-		}
-		return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), version, path)}
-	}
+	return asyncUpdateAgent(srv)
 }
 
 func (m *serversModel) saveServer() {

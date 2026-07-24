@@ -130,7 +130,10 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			name:    "valid",
-			cfg:     &Config{Tasks: []Task{{Name: "t", Source: "/s", Target: "srv:/t"}}},
+			cfg:     &Config{
+				Servers: []Server{{Name: "srv", Host: "1.2.3.4"}},
+				Tasks:   []Task{{Name: "t", Source: "/s", Target: "srv:/t"}},
+			},
 			wantErr: false,
 		},
 		{
@@ -146,6 +149,14 @@ func TestValidate(t *testing.T) {
 		{
 			name:    "missing target",
 			cfg:     &Config{Tasks: []Task{{Name: "t", Source: "/s"}}},
+			wantErr: true,
+		},
+		{
+			name: "unknown server",
+			cfg: &Config{
+				Servers: []Server{{Name: "srv", Host: "1.2.3.4"}},
+				Tasks:   []Task{{Name: "t", Source: "/s", Target: "other:/t"}},
+			},
 			wantErr: true,
 		},
 	}

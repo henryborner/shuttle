@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/henryborner/shuttle/internal/util"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -42,7 +43,7 @@ func testDial(host string, port int, user, keyFile, pass string) error {
 	config := &ssh.ClientConfig{
 		User:            user,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: util.CheckHostKey(),
 		Timeout:         10 * time.Second,
 	}
 

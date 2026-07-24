@@ -84,6 +84,10 @@ func (c *Config) Validate() error {
 		if t.Target == "" {
 			return fmt.Errorf("task '%s' missing target / 任务 '%s' 缺少 target", t.Name, t.Name)
 		}
+		srvName, _ := ParseTarget(t.Target)
+		if srvName != "" && c.GetServer(srvName) == nil {
+			return fmt.Errorf("task '%s' references unknown server '%s' / 任务 '%s' 引用了未知服务器 '%s'", t.Name, srvName, t.Name, srvName)
+		}
 	}
 	return nil
 }

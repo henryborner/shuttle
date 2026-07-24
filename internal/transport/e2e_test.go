@@ -2,7 +2,6 @@ package transport
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	mrand "math/rand"
 	"os"
@@ -55,7 +54,6 @@ func TestE2EDeltaLarge(t *testing.T) {
 	defer client.Close()
 
 	// 1MB random data
-	_ = rand.Reader
 	oldData := make([]byte, 1024*1024)
 	for i := range oldData {
 		oldData[i] = byte('a' + mrand.Intn(26))

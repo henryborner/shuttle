@@ -199,6 +199,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			job   deltaJob
 			sent  int64
 			saved int64
+			start time.Time
 			err   error
 		}, len(deltaJobs))
 
@@ -206,6 +207,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		for _, dj := range deltaJobs {
 			go func(job deltaJob) {
 				sem <- struct{}{}
+				start := time.Now()
 				e.hook.OnFileStart(job.relPath, job.lf.Size)
 				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
 				<-sem
@@ -213,8 +215,9 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 					job   deltaJob
 					sent  int64
 					saved int64
+					start time.Time
 					err   error
-				}{job, sent, saved, fe}
+				}{job, sent, saved, start, fe}
 			}(dj)
 		}
 
@@ -231,6 +234,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				RelPath: r.job.relPath, RemotePath: r.job.remotePath,
 				FileSize: r.job.lf.Size, BytesSent: r.sent,
 				IsUpdated: true, IsDelta: r.saved > 0, DeltaSaved: r.saved,
+				StartTime: r.start, Duration: time.Since(r.start),
 				Error: r.err,
 			})
 			if r.err != nil {
@@ -538,7 +542,9 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return info.Size, 0, nil
 	}
 
-	e.transport.SetModTime(remotePath, info.ModTime)
+	if err := e.transport.SetModTime(remotePath, info.ModTime); err != nil {
+		fmt.Fprintf(os.Stderr, "delta: set mtime for %s: %v\n", filepath.Base(info.Path), err)
+	}
 
 	savedBytes = info.Size - eng.LiteralBytes
 	return wc.n, savedBytes, nil
