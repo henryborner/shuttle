@@ -113,6 +113,8 @@ func (em *explorerModel) Update(msg tea.Msg) (explorerModel, tea.Cmd) {
 	return *em, nil
 }
 
+// connectRemote connects to a server and loads the remote file browser.
+// connectRemote 连接到服务器并加载远程文件浏览器。
 func (em *explorerModel) connectRemote(srv config.Server) {
 
 	if em.remoteBrowser != nil {

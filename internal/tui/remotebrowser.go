@@ -316,6 +316,7 @@ func (rb *RemoteBrowser) removeRecursive(dir string) error {
 func (rb *RemoteBrowser) SelectedPath() string { return rb.selected }
 func (rb *RemoteBrowser) IsDone() bool         { return rb.done }
 func (rb *RemoteBrowser) WasCancelled() bool   { return rb.cancelled }
+
 // Close disconnects from the remote server.
 // Close 断开与远程服务器的连接。
 func (rb *RemoteBrowser) Close() {

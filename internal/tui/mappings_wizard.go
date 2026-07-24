@@ -65,6 +65,8 @@ type mappingsWizard struct {
 	done bool // wizard finished (saved or cancelled)
 }
 
+// newMappingsWizard creates a step-by-step mapping creation wizard.
+// newMappingsWizard 创建分步式映射向导。
 func newMappingsWizard(cfg *config.Config, cfgPath string) *mappingsWizard {
 	return &mappingsWizard{
 		cfg:     cfg,

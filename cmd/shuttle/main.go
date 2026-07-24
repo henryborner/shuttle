@@ -287,6 +287,8 @@ func runPush(cmd *cobra.Command, args []string) {
 	doSync(taskName, cfgPath, dryRun, verbose, workers, algoName, noDelta)
 }
 
+// runConfig prints the syncd.yaml summary or full schema reference.
+// runConfig 打印 syncd.yaml 配置摘要或完整字段参考。
 func runConfig(cmd *cobra.Command, args []string) {
 	if schemaFlag {
 		runSchema()
@@ -331,6 +333,8 @@ func runConfig(cmd *cobra.Command, args []string) {
 	}
 }
 
+// runList prints all tasks and servers from syncd.yaml.
+// runList 打印 syncd.yaml 中所有任务和服务器。
 func runList(cmd *cobra.Command, args []string) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
@@ -348,6 +352,8 @@ func runList(cmd *cobra.Command, args []string) {
 	}
 }
 
+// runTest verifies SSH connectivity to a named server.
+// runTest 测试指定服务器的 SSH 连接。
 func runTest(cmd *cobra.Command, args []string) {
 	serverName := args[0]
 	cfg, err := config.Load(cfgPath)
@@ -369,6 +375,8 @@ func runTest(cmd *cobra.Command, args []string) {
 	fmt.Println("Run 'shuttle agent status " + serverName + "' to check agent.")
 }
 
+// runDeploy uploads and installs the shuttle agent on a remote server.
+// runDeploy 上传并在远端服务器上安装 shuttle agent。
 func runDeploy(cmd *cobra.Command, args []string) {
 	serverName := args[0]
 	cfg, err := config.Load(cfgPath)
@@ -391,6 +399,8 @@ func runDeploy(cmd *cobra.Command, args []string) {
 	fmt.Printf("OK -- installed to %s (%s)\n", path, version)
 }
 
+// runAgentStatus reports whether the shuttle agent is installed on a server.
+// runAgentStatus 报告远端服务器上 shuttle agent 的安装状态。
 func runAgentStatus(cmd *cobra.Command, args []string) {
 	serverName := args[0]
 	cfg, err := config.Load(cfgPath)
@@ -418,6 +428,8 @@ func runAgentStatus(cmd *cobra.Command, args []string) {
 	fmt.Printf("Version: %s\n", r.Version)
 }
 
+// runAgentRemove finds and safely removes the shuttle agent from a server.
+// runAgentRemove 查找并安全删除远端服务器上的 shuttle agent。
 func runAgentRemove(cmd *cobra.Command, args []string) {
 	serverName := args[0]
 	cfg, err := config.Load(cfgPath)
@@ -452,6 +464,8 @@ func runAgentRemove(cmd *cobra.Command, args []string) {
 	fmt.Printf("OK -- removed %s\n", r.Path)
 }
 
+// runSchema prints the full syncd.yaml configuration field reference.
+// runSchema 打印 syncd.yaml 完整配置字段参考。
 func runSchema() {
 	fmt.Println(`syncd.yaml Configuration Reference
 =====================================
@@ -568,6 +582,8 @@ Usage
   Generate a template:    shuttle init`)
 }
 
+// runInit creates a syncd.yaml template in the current directory.
+// runInit 在当前目录创建 syncd.yaml 模板文件。
 func runInit(cmd *cobra.Command, args []string) {
 	if _, err := os.Stat("syncd.yaml"); err == nil {
 		fmt.Println("syncd.yaml already exists")

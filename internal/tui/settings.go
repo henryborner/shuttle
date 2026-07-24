@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// settingsModel manages the settings page (language, checksum, workers).
+// settingsModel 设置页面（语言、校验和算法、并行数）。
 type settingsModel struct {
 	cfg       *config.Config
 	cfgPath   string

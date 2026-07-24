@@ -142,6 +142,7 @@ func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 }
 
 // connectSFTP creates and connects an SFTP client for the given server.
+// connectSFTP 为指定服务器创建并连接 SFTP 客户端。
 func connectSFTP(srv *config.Server) (*transport.SFTPTransport, error) {
 	fmt.Printf("  Connecting %s@%s:%d...\n", srv.User, srv.Host, srv.Port)
 	sftp := transport.NewSFTP(transport.SFTPConfig{

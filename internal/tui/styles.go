@@ -64,6 +64,8 @@ var (
 	IconDelta   = StyleInfo.Render("Δ")
 )
 
+// RenderNav renders the horizontal navigation bar.
+// RenderNav 渲染水平导航栏。
 func RenderNav(pages []string, active int, width int) string {
 	var items []string
 	for i, p := range pages {
@@ -76,10 +78,14 @@ func RenderNav(pages []string, active int, width int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, items...)
 }
 
+// RenderHelp renders the help/hint bar at the bottom.
+// RenderHelp 渲染底部帮助提示栏。
 func RenderHelp(keys string) string {
 	return StyleHelp.Render(keys)
 }
 
+// RenderProgress renders a progress bar with percentage.
+// RenderProgress 渲染带百分比的进度条。
 func RenderProgress(done, total int, width int) string {
 	if total == 0 {
 		return ""

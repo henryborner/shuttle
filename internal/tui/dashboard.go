@@ -9,11 +9,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// dashboardModel manages the dashboard page showing sync task overview.
+// dashboardModel 仪表盘页面，展示同步任务概览。
 type dashboardModel struct {
 	cfg    *config.Config
 	cursor int
 }
 
+// newDashboard creates a dashboard model.
+// newDashboard 创建仪表盘模型。
 func newDashboard(cfg *config.Config) *dashboardModel {
 	return &dashboardModel{cfg: cfg}
 }

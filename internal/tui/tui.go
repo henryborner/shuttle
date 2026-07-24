@@ -715,7 +715,8 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 	}
 }
 
-// scanLocal 扫描本地文件（复用 transport 包逻辑）
+// scanLocal scans local files using the transport package logic.
+// scanLocal 扫描本地文件（复用 transport 包逻辑）。
 func scanLocal(root string, excludes []string, skipDots bool) ([]string, error) {
 	files, err := transport.ScanLocalFiles(root, excludes, skipDots)
 	if err != nil {
@@ -737,7 +738,8 @@ var highRiskExts = []string{
 	".bak", ".backup", ".tar", ".gz", ".bz2", ".xz", ".7z", ".zip", ".rar",
 }
 
-// sortOrphans 把高危文件（数据库/密钥/配置）排到列表最前面
+// sortOrphans moves high-risk files (databases, keys, configs) to the top of the list.
+// sortOrphans 把高危文件（数据库/密钥/配置）排到列表最前面。
 func sortOrphans(files []string) {
 	// 简单冒泡：高危文件沉到前面
 	high := func(name string) int {

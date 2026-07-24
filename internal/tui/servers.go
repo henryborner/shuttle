@@ -283,7 +283,8 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	return *m, nil
 }
 
-// asyncTest runs the connection test in a goroutine, returns result via message
+// asyncTest runs the SSH connection test in a goroutine and checks for agent presence.
+// asyncTest 在 goroutine 中测试 SSH 连接并检查 agent 是否存在。
 func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 	host := m.formHost
 	port, _ := strconv.Atoi(m.formPortStr)
@@ -331,7 +332,8 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 	}
 }
 
-// asyncDeploy runs deployment in a goroutine (form view).
+// asyncDeploy runs agent deployment in a goroutine from the form view.
+// asyncDeploy 在表单视图中通过 goroutine 执行 agent 部署。
 func (m *serversModel) asyncDeploy() tea.Cmd {
 	port, _ := strconv.Atoi(m.formPortStr)
 	if port <= 0 {
@@ -348,6 +350,8 @@ func (m *serversModel) asyncDeploy() tea.Cmd {
 	return asyncUpdateAgent(srv)
 }
 
+// saveServer saves the form fields into the server list (add or edit).
+// saveServer 将表单字段保存到服务器列表（新增或编辑）。
 func (m *serversModel) saveServer() {
 	port, _ := strconv.Atoi(m.formPortStr)
 	if port <= 0 {
@@ -370,6 +374,8 @@ func (m *serversModel) saveServer() {
 	}
 }
 
+// appendField appends a character to the currently focused form field.
+// appendField 向当前焦点的表单字段追加字符。
 func (m *serversModel) appendField(ch string) {
 	switch m.formField {
 	case 0:
@@ -387,6 +393,8 @@ func (m *serversModel) appendField(ch string) {
 	}
 }
 
+// backspaceField deletes the last character from the current form field.
+// backspaceField 删除当前表单字段的最后一个字符。
 func (m *serversModel) backspaceField() {
 	switch m.formField {
 	case 0:
@@ -518,7 +526,8 @@ func (m *serversModel) saveConfig() {
 	saveConfig(m.cfg, m.cfgPath)
 }
 
-// removeTasksForServer removes all tasks that target a given server.
+// removeTasksForServer removes all tasks targeting the given server.
+// removeTasksForServer 删除所有以指定服务器为目标的同步任务。
 func removeTasksForServer(cfg *config.Config, serverName string) {
 	filtered := cfg.Tasks[:0]
 	for _, t := range cfg.Tasks {
@@ -531,6 +540,7 @@ func removeTasksForServer(cfg *config.Config, serverName string) {
 }
 
 // asyncUpdateAgent deploys shuttle_linux to the given server (standalone, no form needed).
+// asyncUpdateAgent 向指定服务器部署 shuttle_linux（独立使用，无需表单）。
 func asyncUpdateAgent(srv config.Server) tea.Cmd {
 	return func() tea.Msg {
 		path, version, err := agent.Deploy(srv)
@@ -541,7 +551,8 @@ func asyncUpdateAgent(srv config.Server) tea.Cmd {
 	}
 }
 
-// protectUpdate handles key events in protect editing mode.
+// protectUpdate handles key events in the protect-pattern editing mode.
+// protectUpdate 处理保护模式编辑界面的按键事件。
 func (m *serversModel) protectUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	// Remote browser active — delegate to it
 	if m.remoteBrowser != nil {
@@ -628,7 +639,8 @@ func (m *serversModel) protectUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 	return *m, nil
 }
 
-// protectView renders the protect list editing view.
+// protectView renders the protect-pattern list editing UI.
+// protectView 渲染保护模式列表编辑界面。
 func (m *serversModel) protectView(width, height int) string {
 	// Remote browser active — delegate rendering
 	if m.remoteBrowser != nil {
@@ -666,7 +678,8 @@ func (m *serversModel) protectView(width, height int) string {
 	return StyleBorder.Width(width - 4).Height(height - 2).Render(body)
 }
 
-// tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
+// tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle agent binary.
+// tryRemoveRemoteAgent 尝试 SSH 到服务器并删除 shuttle agent 二进制文件。
 func tryRemoveRemoteAgent(srv config.Server) {
 	if err := agent.Remove(srv, nil); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to remove remote agent on %s: %v\n", srv.Host, err)

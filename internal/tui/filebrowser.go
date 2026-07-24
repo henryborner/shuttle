@@ -221,7 +221,9 @@ func (fb *FileBrowser) doDelete() {
 // SelectedPath returns the path the user selected, or empty if cancelled.
 // SelectedPath returns the path the user selected, or empty if cancelled.
 func (fb *FileBrowser) SelectedPath() string { return fb.selected }
+
 // IsDone reports whether the browser has finished.
 func (fb *FileBrowser) IsDone() bool { return fb.done }
+
 // WasCancelled reports whether the user cancelled.
 func (fb *FileBrowser) WasCancelled() bool { return fb.cancelled }
