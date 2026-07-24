@@ -183,7 +183,7 @@ connectivity and agent status.`,
 		Short: "Show remote agent installation status",
 		Long: `Search common paths on the remote server for a shuttle agent binary.
 Each candidate is verified by running "<path> version" and checking
-the output starts with "Shuttle" — this avoids false positives from
+the output starts with "Shuttle" -- this avoids false positives from
 unrelated binaries with the same name.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runAgentStatus,
@@ -195,7 +195,7 @@ unrelated binaries with the same name.`,
 actually Shuttle (not an unrelated binary), and remove it.
 
 Only binaries whose "version" output starts with "Shuttle" are
-deleted — other files named "shuttle" are left untouched.`,
+deleted -- other files named "shuttle" are left untouched.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runAgentRemove,
 	}
@@ -208,7 +208,7 @@ deleted — other files named "shuttle" are left untouched.`,
 		Short: "Write a syncd.yaml template to the current directory",
 		Long: `Create a new syncd.yaml file with commented examples for
 both folder syncs (website deployment) and single-file syncs
-(config push). Safe to run — will not overwrite an existing file.
+(config push). Safe to run -- will not overwrite an existing file.
 
 Next steps:
   Edit syncd.yaml to set your server and task
@@ -423,7 +423,7 @@ func runSchema() {
 =====================================
 
 Top-Level Fields
-────────────────────────
+------------------------
   version    string    Config version, currently "1.0"
   language   string    UI language: en / zh (default zh)
   checksum   string    Default strong checksum: md5 / sha256 / xxh64 / xxh3 (default xxh64)
@@ -432,30 +432,30 @@ Top-Level Fields
   tasks      []Task    Sync task list
 
 Server
-────────────────────────
+------------------------
   name       string    Server name, referenced in task.target
   host       string    SSH host address (IP or domain)
   port       int       SSH port (default 22)
   user       string    Login username
   key_file   string    SSH private key path, e.g. ~/.ssh/id_ed25519 (preferred over password)
   password   string    Login password (fallback when key is unavailable; plaintext not recommended)
-  protect    []string  Protect patterns (glob) — matching remote files are NEVER overwritten or deleted
+  protect    []string  Protect patterns (glob) -- matching remote files are NEVER overwritten or deleted
                        Example: ["*.db", "*.pem", "config.yaml", "secrets/"]
 
 Task
-────────────────────────
+------------------------
   name       string    Task name
   source     string    Local source path.
                        Shuttle detects folder vs file from the filesystem (os.Stat),
                        not from a trailing slash.  The trailing \ or / is a visual
-                       convention — it has no effect on behavior.
-                       ── Folder ──
+                       convention -- it has no effect on behavior.
+                       -- Folder --
                          Source that exists as a directory on disk.
                          Contents are mapped into target (respecting flat).
                          Examples:
                            E:\projects\dist\
                            /home/deploy/site/
-                       ── Single file ──
+                       -- Single file --
                          Source that exists as a regular file on disk.
                          Synced directly to the target path.
                          Examples:
@@ -465,21 +465,21 @@ Task
                        E:\dist\ and E:\dist behave identically.
   target     string    Remote target, format: <server name>:<path>
                        Shuttle joins target + relative path.  Trailing / has no
-                       special meaning — filepath.Join handles both forms the same.
-                       ── Folder sync ──
+                       special meaning -- filepath.Join handles both forms the same.
+                       -- Folder sync --
                          Example: myserver:/var/www/html/
-                           source=E:\dist\  →  files go to /var/www/html/*
-                       ── Single file sync ──
+                           source=E:\dist\  -> files go to /var/www/html/*
+                       -- Single file sync --
                          Example: myserver:/etc/nginx/nginx.conf
-                           source=E:\configs\nginx.conf  →  overwrites /etc/nginx/nginx.conf
+                           source=E:\configs\nginx.conf  -> overwrites /etc/nginx/nginx.conf
   options    Options   Sync options
 
 Options
-────────────────────────
+------------------------
   delete     bool      Delete extra files on the remote side (default false)
                        When enabled, remote files not present locally will be removed.
                        ⚠ Only applies to folder syncs.  Ignored for single-file tasks.
-  exclude    []string  Glob patterns to skip — matching files/dirs are not transferred
+  exclude    []string  Glob patterns to skip -- matching files/dirs are not transferred
                        Example: ["*.tmp", ".git/", "node_modules/"]
   checksum   bool      Use strong checksums to detect file changes (default false)
                        false: compare by mtime + file size (fast, 1-second precision)
@@ -493,15 +493,15 @@ Options
                        Hidden files are those whose name starts with a dot (.)
 
 Strong Checksum Algorithms
-────────────────────────
-  xxh64      64-bit xxHash (default), fastest — good for LAN/SSD
+------------------------
+  xxh64      64-bit xxHash (default), fastest -- good for LAN/SSD
   xxh3       128-bit xxH3, fast non-crypto hash with wider output (~2⁻⁶⁴ collision)
   md5        128-bit MD5, best cross-platform compatibility
-  sha256     256-bit SHA-2, strongest — use when integrity matters most
+  sha256     256-bit SHA-2, strongest -- use when integrity matters most
   (All algorithms have SIMD-accelerated assembly paths on amd64.)
 
 Examples
-────────────────────────
+------------------------
   # Folder sync: deploy a website build
   tasks:
     - name: web
@@ -520,7 +520,7 @@ Examples
         checksum: true
 
 Usage
-────────────────────────
+------------------------
   View current config:    shuttle config
   Show this reference:    shuttle config --schema
   Generate a template:    shuttle init`)
@@ -557,7 +557,7 @@ servers:
       - ".env"
 
 tasks:
-  # ── 示例1: 文件夹同步（部署网站）──
+  # -- 示例1: 文件夹同步（部署网站）--
   #   source 末尾有 \ → 把文件夹内容映射到 target
   #   target 末尾有 / → 内容放入该目录下
   - name: web
@@ -571,7 +571,7 @@ tasks:
       checksum: false        # false: 比大小+时间  true: 比文件内容哈希
       flat: false            # true: 不套源文件夹名，直接映射内容
 
-  # ── 示例2: 单文件同步（推送配置）──
+  # -- 示例2: 单文件同步（推送配置）--
   #   source 无末尾斜杠 → 视为单文件
   #   target 无末尾斜杠 → 精确覆盖该路径
   # - name: nginx-config
