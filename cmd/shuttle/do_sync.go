@@ -60,7 +60,7 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
 	// summary
 	fmt.Println()
-	fmt.Println("  ── Summary ──")
+	fmt.Println("  -- Summary --")
 	if stats.NewFiles > 0 {
 		fmt.Printf("  %s  %d files\n", util.Pad("NEW", 5), stats.NewFiles)
 	}
