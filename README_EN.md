@@ -69,7 +69,10 @@ tasks:
 | `shuttle push [name]` | Sync tasks |
 | `shuttle list` | List all tasks and servers |
 | `shuttle config` | Full config summary |
-| `shuttle test <server>` | Test SSH connection |
+| `shuttle test <server>` | Test SSH connection + agent status |
+| `shuttle deploy <server>` | Deploy remote agent |
+| `shuttle agent status <server>` | Show agent installation status |
+| `shuttle agent remove <server>` | Find and safely remove agent |
 | `shuttle init` | Generate config template |
 | `shuttle tui` | Launch TUI from terminal |
 | `shuttle version` | Version and available checksums |
@@ -120,9 +123,19 @@ The TUI tries two install paths automatically:
 
 > Press `U` on an existing server to update the agent to the latest version.
 
-### Method 2: Manual Deploy
+### Method 2: CLI Deploy
 
-If TUI deployment fails (e.g. network restrictions), upload manually:
+If you prefer the command line:
+
+```powershell
+shuttle deploy myserver
+```
+
+Same effect as the TUI one-click deploy.
+
+### Method 3: Manual Deploy
+
+If automatic deployment fails (e.g. network restrictions), upload manually:
 
 ```powershell
 # From Windows locally
@@ -156,7 +169,15 @@ Seeing version info means the agent is installed correctly.
 
 ### Uninstall Agent
 
-When deleting a server in the TUI, press `D` (instead of `Y`) to also clean up the remote agent:
+**CLI** (recommended):
+
+```powershell
+shuttle agent remove myserver
+```
+
+This locates the agent, verifies it's actually Shuttle by running `shuttle version` (won't delete an unrelated binary with the same name), then removes it.
+
+**TUI**: When deleting a server, press `D` (instead of `Y`) to also clean up the remote agent.
 
 ```bash
 # Or manually SSH and remove

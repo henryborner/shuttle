@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	delta "github.com/henryborner/go-rsync"
+	"github.com/henryborner/shuttle/internal/agent"
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/tui"
 	"github.com/spf13/cobra"
@@ -128,6 +129,52 @@ is reachable and the key or password is accepted.`,
 		Run:  runTest,
 	}
 	rootCmd.AddCommand(testCmd)
+
+	// deploy
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "deploy <server name>",
+		Short: "Deploy the shuttle agent to a remote Linux server",
+		Long: `Upload shuttle_linux to the named server and install it.
+
+Tries /usr/local/bin/shuttle first (needs sudo), then ~/shuttle
+as a non-root fallback. The binary must be named shuttle_linux
+and placed next to shuttle.exe.
+
+After deploying, run 'shuttle test <server>' to verify both
+connectivity and agent status.`,
+		Args: cobra.ExactArgs(1),
+		Run:  runDeploy,
+	})
+
+	// agent
+	agentCmd := &cobra.Command{
+		Use:   "agent",
+		Short: "Manage the remote shuttle agent",
+		Long:  `Find, check status, or remove the shuttle agent on a remote server.`,
+	}
+	agentStatusCmd := &cobra.Command{
+		Use:   "status <server name>",
+		Short: "Show remote agent installation status",
+		Long: `Search common paths on the remote server for a shuttle agent binary.
+Each candidate is verified by running "<path> version" and checking
+the output starts with "Shuttle" — this avoids false positives from
+unrelated binaries with the same name.`,
+		Args: cobra.ExactArgs(1),
+		Run:  runAgentStatus,
+	}
+	agentRemoveCmd := &cobra.Command{
+		Use:   "remove <server name>",
+		Short: "Find and remove the remote shuttle agent",
+		Long: `Search for the shuttle agent on the remote server, verify it's
+actually Shuttle (not an unrelated binary), and remove it.
+
+Only binaries whose "version" output starts with "Shuttle" are
+deleted — other files named "shuttle" are left untouched.`,
+		Args: cobra.ExactArgs(1),
+		Run:  runAgentRemove,
+	}
+	agentCmd.AddCommand(agentStatusCmd, agentRemoveCmd)
+	rootCmd.AddCommand(agentCmd)
 
 	// init
 	rootCmd.AddCommand(&cobra.Command{
@@ -254,6 +301,90 @@ func runTest(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	fmt.Println("OK — connected successfully")
+	fmt.Println("Run 'shuttle agent status " + serverName + "' to check agent.")
+}
+
+func runDeploy(cmd *cobra.Command, args []string) {
+	serverName := args[0]
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
+		os.Exit(1)
+	}
+	s := cfg.GetServer(serverName)
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Server not found: %s\n", serverName)
+		os.Exit(1)
+	}
+	fmt.Printf("Deploying agent to %s@%s:%d ...\n", s.User, s.Host, s.Port)
+	path, version, err := agent.Deploy(*s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Manual: scp shuttle_linux %s@%s:~/ ; ssh %s@%s chmod +x ~/shuttle\n", s.User, s.Host, s.User, s.Host)
+		os.Exit(1)
+	}
+	fmt.Printf("OK — installed to %s (%s)\n", path, version)
+}
+
+func runAgentStatus(cmd *cobra.Command, args []string) {
+	serverName := args[0]
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
+		os.Exit(1)
+	}
+	s := cfg.GetServer(serverName)
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Server not found: %s\n", serverName)
+		os.Exit(1)
+	}
+	fmt.Printf("Checking agent on %s@%s:%d ...\n", s.User, s.Host, s.Port)
+	r, err := agent.Find(*s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		os.Exit(1)
+	}
+	if r == nil {
+		fmt.Println("Agent: not installed")
+		fmt.Println("Run 'shuttle deploy " + serverName + "' to install.")
+		os.Exit(1)
+	}
+	fmt.Printf("Path:    %s\n", r.Path)
+	fmt.Printf("Version: %s\n", r.Version)
+}
+
+func runAgentRemove(cmd *cobra.Command, args []string) {
+	serverName := args[0]
+	cfg, err := config.Load("syncd.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "No config: %v\n", err)
+		os.Exit(1)
+	}
+	s := cfg.GetServer(serverName)
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Server not found: %s\n", serverName)
+		os.Exit(1)
+	}
+
+	// Find first to verify it's really Shuttle
+	fmt.Printf("Looking for agent on %s@%s:%d ...\n", s.User, s.Host, s.Port)
+	r, err := agent.Find(*s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		os.Exit(1)
+	}
+	if r == nil {
+		fmt.Println("No shuttle agent found — nothing to remove.")
+		return
+	}
+	fmt.Printf("Found: %s  (%s)\n", r.Path, r.Version)
+
+	// Remove the verified binary (reuse FindResult, no second SSH round-trip)
+	if err := agent.Remove(*s, r); err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("OK — removed %s\n", r.Path)
 }
 
 func runSchema() {

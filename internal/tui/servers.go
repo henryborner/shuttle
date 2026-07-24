@@ -2,12 +2,11 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/henryborner/shuttle/internal/agent"
 	"github.com/henryborner/shuttle/internal/config"
 	"github.com/henryborner/shuttle/internal/i18n"
 	"github.com/henryborner/shuttle/internal/util"
@@ -257,12 +256,7 @@ func (m *serversModel) formUpdate(msg tea.Msg) (serversModel, tea.Cmd) {
 		if !m.hasAgent && !m.deployed {
 			// No agent → try deploy
 			m.testMsg = i18n.T("srv.deploying")
-			authMethods := util.BuildAuthMethods(m.formKey, m.formPass)
-			if len(authMethods) == 0 {
-				m.testMsg = fmt.Sprintf("%s%s", i18n.T("srv.key_err"), i18n.T("srv.empty_auth"))
-				return *m, nil
-			}
-			return *m, m.asyncDeploy(authMethods)
+			return *m, m.asyncDeploy()
 		}
 		m.saveServer()
 		m.saveConfig()
@@ -328,89 +322,27 @@ func (m *serversModel) asyncTest(authMethods []ssh.AuthMethod) tea.Cmd {
 	}
 }
 
-// asyncDeploy runs deployment in a goroutine
-func (m *serversModel) asyncDeploy(authMethods []ssh.AuthMethod) tea.Cmd {
-	host := m.formHost
+// asyncDeploy runs deployment in a goroutine (form view).
+func (m *serversModel) asyncDeploy() tea.Cmd {
 	port, _ := strconv.Atoi(m.formPortStr)
 	if port <= 0 {
 		port = 22
 	}
-	user := m.formUser
+	srv := config.Server{
+		Name:    strings.TrimSpace(m.formName),
+		Host:    strings.TrimSpace(m.formHost),
+		Port:    port,
+		User:    strings.TrimSpace(m.formUser),
+		KeyFile: strings.TrimSpace(m.formKey),
+		Pass:    strings.TrimSpace(m.formPass),
+	}
 
 	return func() tea.Msg {
-		cfg := &ssh.ClientConfig{
-			User: user, Auth: authMethods,
-			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
-		}
-		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(host), port), cfg)
+		path, version, err := agent.Deploy(srv)
 		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.deploy_err"), err)}
+			return deployResultMsg{ok: false, msg: fmt.Sprintf("%s: %v\n%s", i18n.T("srv.deploy_err"), err, i18n.T("srv.manual_install"))}
 		}
-		defer client.Close()
-
-		exePath, _ := os.Executable()
-		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
-		if _, err := os.Stat(localBin); os.IsNotExist(err) {
-			// go run 可能不在项目目录，fallback 当前工作目录
-			localBin = "shuttle_linux"
-		}
-		if _, err := os.Stat(localBin); os.IsNotExist(err) {
-			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
-		}
-		binData, err := os.ReadFile(localBin)
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.read_err"), err)}
-		}
-
-		// Try default system path first, then home dir as non-root fallback
-		deployPaths := []struct {
-			path string
-			cmd  string
-		}{
-			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
-			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
-		}
-
-		var lastErr error
-		deployed := false
-		for _, dp := range deployPaths {
-			s, err := client.NewSession()
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			stdin, err := s.StdinPipe()
-			if err != nil {
-				lastErr = err
-				s.Close()
-				continue
-			}
-			s.Start(dp.cmd)
-			stdin.Write(binData)
-			stdin.Close()
-			s.Wait()
-			s.Close()
-
-			// Verify
-			v, err := client.NewSession()
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			out, err := v.Output(dp.path + " version")
-			v.Close()
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			deployed = true
-			return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), string(out), dp.path)}
-		}
-
-		if !deployed {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf("%s: %v\n%s", i18n.T("srv.deploy_err"), lastErr, i18n.T("srv.manual_install"))}
-		}
-		return deployResultMsg{ok: false, msg: "unreachable"}
+		return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), version, path)}
 	}
 }
 
@@ -598,75 +530,12 @@ func removeTasksForServer(cfg *config.Config, serverName string) {
 
 // asyncUpdateAgent deploys shuttle_linux to the given server (standalone, no form needed).
 func asyncUpdateAgent(srv config.Server) tea.Cmd {
-	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
-	if len(authMethods) == 0 {
-		return func() tea.Msg {
-			return deployResultMsg{ok: false, msg: i18n.T("srv.empty_auth")}
-		}
-	}
-	port := srv.Port
-	if port <= 0 {
-		port = 22
-	}
 	return func() tea.Msg {
-		cfg := &ssh.ClientConfig{
-			User: srv.User, Auth: authMethods,
-			HostKeyCallback: util.CheckHostKey(), Timeout: 15 * time.Second,
-		}
-		client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), port), cfg)
+		path, version, err := agent.Deploy(srv)
 		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.deploy_err"), err)}
+			return deployResultMsg{ok: false, msg: fmt.Sprintf("%s: %v\n%s", i18n.T("srv.deploy_err"), err, i18n.T("srv.manual_install"))}
 		}
-		defer client.Close()
-
-		exePath, _ := os.Executable()
-		localBin := filepath.Join(filepath.Dir(exePath), "shuttle_linux")
-		if _, err := os.Stat(localBin); os.IsNotExist(err) {
-			localBin = "shuttle_linux"
-		}
-		if _, err := os.Stat(localBin); os.IsNotExist(err) {
-			return deployResultMsg{ok: false, msg: i18n.T("srv.not_found")}
-		}
-		binData, err := os.ReadFile(localBin)
-		if err != nil {
-			return deployResultMsg{ok: false, msg: fmt.Sprintf(i18n.T("srv.read_err"), err)}
-		}
-
-		deployPaths := []struct {
-			path string
-			cmd  string
-		}{
-			{"/usr/local/bin/shuttle", "cat > /usr/local/bin/shuttle && chmod +x /usr/local/bin/shuttle"},
-			{"$HOME/shuttle", "cat > $HOME/shuttle && chmod +x $HOME/shuttle && echo 'export PATH=$PATH:$HOME' >> $HOME/.bashrc"},
-		}
-
-		for _, dp := range deployPaths {
-			s, _ := client.NewSession()
-			if s == nil {
-				continue
-			}
-			stdin, _ := s.StdinPipe()
-			if stdin == nil {
-				s.Close()
-				continue
-			}
-			s.Start(dp.cmd)
-			stdin.Write(binData)
-			stdin.Close()
-			s.Wait()
-			s.Close()
-
-			v, err := client.NewSession()
-			if err != nil {
-				continue
-			}
-			out, err := v.Output(dp.path + " version")
-			v.Close()
-			if err == nil {
-				return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), string(out), dp.path)}
-			}
-		}
-		return deployResultMsg{ok: false, msg: i18n.T("srv.manual_install")}
+		return deployResultMsg{ok: true, msg: fmt.Sprintf("%s%s %s  (%s)", IconOK, i18n.T("srv.deployed"), version, path)}
 	}
 }
 
@@ -797,23 +666,5 @@ func (m *serversModel) protectView(width, height int) string {
 
 // tryRemoveRemoteAgent attempts to SSH into the server and remove the shuttle binary.
 func tryRemoveRemoteAgent(srv config.Server) {
-	authMethods := util.BuildAuthMethods(srv.KeyFile, srv.Pass)
-	if len(authMethods) == 0 {
-		return
-	}
-	cfg := &ssh.ClientConfig{
-		User: srv.User, Auth: authMethods,
-		HostKeyCallback: util.CheckHostKey(), Timeout: 8 * time.Second,
-	}
-	addr := fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), srv.Port)
-	client, err := ssh.Dial("tcp", addr, cfg)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-	session, _ := client.NewSession()
-	if session != nil {
-		session.Run("rm -f /usr/local/bin/shuttle ~/shuttle")
-		session.Close()
-	}
+	_ = agent.Remove(srv, nil)
 }

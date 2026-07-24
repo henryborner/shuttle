@@ -69,7 +69,10 @@ tasks:
 | `shuttle push [name]` | 执行同步 |
 | `shuttle list` | 列出所有任务和服务器 |
 | `shuttle config` | 完整配置摘要 |
-| `shuttle test <server>` | 测试 SSH 连接 |
+| `shuttle test <server>` | 测试 SSH 连接 + agent 状态 |
+| `shuttle deploy <server>` | 部署远端 agent |
+| `shuttle agent status <server>` | 查看 agent 安装状态 |
+| `shuttle agent remove <server>` | 查找并安全删除 agent |
 | `shuttle init` | 生成配置模板 |
 | `shuttle tui` | 命令行启动 TUI |
 | `shuttle version` | 版本和可用校验算法 |
@@ -120,9 +123,19 @@ TUI 会自动尝试两个安装路径：
 
 > 已有 agent 的服务器可按 `U` 键更新到最新版本。
 
-### 方式二：手动部署
+### 方式二：CLI 部署
 
-如果 TUI 部署失败（如网络限制），可手动上传：
+如果你更习惯命令行，可以直接用 `deploy` 子命令：
+
+```powershell
+shuttle deploy myserver
+```
+
+效果与 TUI 一键部署完全相同。
+
+### 方式三：手动部署
+
+如果自动部署失败（如网络限制），可手动上传：
 
 ```powershell
 # Windows 本地执行
@@ -156,7 +169,15 @@ shuttle version
 
 ### 卸载 Agent
 
-在 TUI 服务器页面删除服务器时，按 `D`（而非 `Y`）可同时清理远端 agent：
+**CLI 方式**（推荐）：
+
+```powershell
+shuttle agent remove myserver
+```
+
+该命令会先查找 agent 位置，执行 `shuttle version` 验证确认为 Shuttle（非同名无关二进制），确认后才删除。
+
+**TUI 方式**：在服务器页面删除服务器时，按 `D`（而非 `Y`）可同时清理远端 agent。
 
 ```bash
 # 或手动 SSH 到远端删除
