@@ -48,20 +48,32 @@ shuttle push web           # 一键同步
 ```yaml
 # syncd.yaml
 version: "1.0"
+language: zh               # en / zh
+checksum: md5              # md5 / sha256 / xxh64 / xxh3
+workers: 4                 # delta 并行数: 1=serial, 2/4/8=parallel
+
 servers:
   - name: myserver
     host: 192.168.1.100
     port: 22
     user: deploy
     key_file: ~/.ssh/id_ed25519
+    # password: your_pass   # 不推荐明文密码
+    protect:                # 保护列表: 匹配的远端文件绝不覆盖/删除
+      - "*.db"
+      - "*.pem"
+      - "secrets/"          # / 结尾 = 递归保护整个目录
 
 tasks:
   - name: web
     source: E:\projects\web\dist\
     target: myserver:/var/www/html/
     options:
-      delete: true
+      delete: true          # 删除远端多余文件
       exclude: ["*.tmp", ".git/"]
+      checksum: false       # true: 用校验和对比; false: 用时间+大小
+      flat: false           # true: 直接映射内容不套源文件夹名
+      show_dots: false      # true: 同步隐藏文件 (.开头)
 ```
 
 ## CLI

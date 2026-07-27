@@ -48,20 +48,32 @@ Standalone agents (download if needed):
 ```yaml
 # syncd.yaml
 version: "1.0"
+language: en               # en / zh
+checksum: md5              # md5 / sha256 / xxh64 / xxh3
+workers: 4                 # delta workers: 1=serial, 2/4/8=parallel
+
 servers:
   - name: myserver
     host: 192.168.1.100
     port: 22
     user: deploy
     key_file: ~/.ssh/id_ed25519
+    # password: your_pass   # plaintext not recommended
+    protect:                # patterns: matching remote files never overwritten/deleted
+      - "*.db"
+      - "*.pem"
+      - "secrets/"          # trailing / = recursive directory protect
 
 tasks:
   - name: web
     source: E:\projects\web\dist\
     target: myserver:/var/www/html/
     options:
-      delete: true
+      delete: true          # delete extra remote files
       exclude: ["*.tmp", ".git/"]
+      checksum: false       # true: detect changes by checksum; false: by mtime+size
+      flat: false           # true: map content directly without source folder
+      show_dots: false      # true: sync hidden files/dirs
 ```
 
 ## CLI
