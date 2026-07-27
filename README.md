@@ -269,6 +269,26 @@ Shuttle 通过 SSH 连接到 Linux 服务器，并在远端运行一个轻量 ag
 
 Agent 已内嵌在 shuttle.exe 中，通过 TUI 一键部署，自动检测远端架构（x86_64 / aarch64）。
 
+## 性能基准
+
+| 场景 | 传输量 | 节省 |
+|------|--------|------|
+| 100 MB 文件完全一致 | ~6 KB（仅签名） | 99.99% |
+| 100 MB 文件改动 1 字节 | ~6 KB + 1 数据块 | ~99.99% |
+| 完全重写 | 100 MB + 开销 | ~0% |
+
+- 滚动校验和：**77 GB/s**（AVX2，Ryzen 9）
+- 大文件使用 mmap 读取，避免全量加载到内存
+- 远端签名缓存：未变化的文件跳过校验和计算
+
+## 从源码构建
+
+```powershell
+git clone https://github.com/henryborner/shuttle.git
+cd shuttle
+.\build.ps1        # 一键交叉编译 + UPX 压缩
+```
+
 ## 延伸阅读
 
 - [Remote Agent](docs/agent.md) — agent 部署、身份验证、搜索路径、签名缓存

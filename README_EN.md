@@ -258,6 +258,26 @@ Shuttle connects to Linux servers via SSH and runs a lightweight agent (slim bui
 
 Agents are embedded in shuttle.exe. Deploy via TUI with one click — remote architecture (x86_64 / aarch64) is auto-detected.
 
+## Performance
+
+| Scenario | Transfer | Saving |
+|----------|----------|--------|
+| Identical 100 MB file | ~6 KB (signature) | 99.99% |
+| 1 byte changed in 100 MB | ~6 KB + 1 block | ~99.99% |
+| Full rewrite | 100 MB + overhead | ~0% |
+
+- Rolling checksum: **77 GB/s** (AVX2, Ryzen 9)
+- mmap for large file reads, no full memory loading
+- Remote signature cache skips checksum recomputation for unchanged files
+
+## Build from Source
+
+```powershell
+git clone https://github.com/henryborner/shuttle.git
+cd shuttle
+.\build.ps1        # one-shot cross-compile + UPX compress
+```
+
 ## Further Reading
 
 - [Remote Agent](docs/agent.md) — deployment, identity verification, search paths, signature cache
