@@ -42,9 +42,9 @@ type FindResult struct {
 	Version string // version output / 版本信息
 }
 
-// Deploy uploads shuttle_linux to the remote server and returns the installed
-// path and version output on success.
-// Deploy 将 shuttle_linux 上传到远端服务器，成功时返回安装路径和版本信息。
+// Deploy detects the remote architecture, extracts the matching agent binary
+// from the embedded filesystem, and uploads it to the remote server.
+// Deploy 检测远端架构，从内嵌文件系统中提取匹配的 agent 二进制，上传到远端服务器。
 func Deploy(srv config.Server) (path string, version string, err error) {
 	client, err := dial(srv, 15*time.Second)
 	if err != nil {
@@ -52,13 +52,18 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 	}
 	defer client.Close()
 
-	localBin, err := findLocalBinary()
+	// 1. Detect remote architecture via uname -m.
+	// 1. 通过 uname -m 检测远端架构。
+	remoteArch, err := detectRemoteArch(client)
+	if err != nil {
+		remoteArch = "" // fall through to fallback
+	}
+
+	// 2. Get the matching agent binary (prefer embed, fallback to local file).
+	// 2. 获取匹配的 agent 二进制（优先 embed，回退到本地文件）。
+	binData, source, err := getAgentBinary(remoteArch)
 	if err != nil {
 		return "", "", err
-	}
-	binData, err := os.ReadFile(localBin)
-	if err != nil {
-		return "", "", fmt.Errorf("read %s: %w", localBin, err)
 	}
 
 	type deployPath struct {
@@ -131,7 +136,7 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 		verOut, _ := runRemoteCmd(client, shellPath(dp.path)+" version")
 		return dp.path, strings.TrimSpace(verOut), nil
 	}
-	return "", "", fmt.Errorf("deploy failed: %w", lastErr)
+	return "", "", fmt.Errorf("deploy failed [%s]: %w", source, lastErr)
 }
 
 // Check returns true if the shuttle agent is installed and reachable on the
@@ -227,6 +232,48 @@ func dial(srv config.Server, timeout time.Duration) (*ssh.Client, error) {
 		HostKeyCallback: util.CheckHostKey(), Timeout: timeout,
 	}
 	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), port), cfg)
+}
+
+// detectRemoteArch runs "uname -m" on the remote server to determine its CPU
+// architecture, returning the GOARCH string (e.g. "amd64", "arm64").
+// detectRemoteArch 在远端执行 uname -m 检测 CPU 架构，返回 GOARCH 字符串。
+func detectRemoteArch(client *ssh.Client) (string, error) {
+	raw, err := runRemoteCmd(client, "uname -m")
+	if err != nil {
+		return "", fmt.Errorf("uname -m failed: %w", err)
+	}
+	machine := strings.TrimSpace(raw)
+	if goarch, ok := archMap[machine]; ok {
+		return goarch, nil
+	}
+	return "", fmt.Errorf("unsupported remote architecture: %s", machine)
+}
+
+// getAgentBinary returns the agent binary bytes for the given GOARCH.
+// Prefers the embedded filesystem; falls back to findLocalBinary if no
+// matching architecture is embedded.
+// getAgentBinary 返回指定 GOARCH 的 agent 二进制字节。优先内嵌，不匹配时回退到本地文件。
+func getAgentBinary(goarch string) ([]byte, string, error) {
+	// Try embedded agent first.
+	// 优先尝试内嵌 agent。
+	if goarch != "" {
+		name := agentFileName(goarch)
+		if data, err := agentsFS.ReadFile(name); err == nil {
+			return data, "embed:" + name, nil
+		}
+	}
+
+	// Fallback: look for shuttle_linux on disk (legacy mode).
+	// 回退：在磁盘上查找 shuttle_linux（兼容旧模式）。
+	localBin, err := findLocalBinary()
+	if err != nil {
+		return nil, "", fmt.Errorf("no embedded agent for %s and %w", goarch, err)
+	}
+	data, err := os.ReadFile(localBin)
+	if err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", localBin, err)
+	}
+	return data, "file:" + localBin, nil
 }
 
 // findLocalBinary locates shuttle_linux next to the current executable,
