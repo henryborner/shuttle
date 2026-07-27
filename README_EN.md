@@ -24,8 +24,11 @@ shuttle push web           # sync a task
 
 Download from [Releases](https://github.com/henryborner/shuttle/releases):
 
-- **`shuttle.exe`** — Windows main program
-- **`shuttle_linux`** — Linux remote agent (deploy via TUI)
+- **`shuttle.exe`** — Windows main program (embedded linux/amd64 + linux/arm64 agents, auto-detect remote arch)
+
+Standalone agents (download if needed):
+- **`shuttle_linux_amd64`** — amd64 agent (~740 KB)
+- **`shuttle_linux_arm64`** — arm64 agent (~620 KB)
 
 ## Quick Start
 
@@ -125,13 +128,13 @@ shuttle push --source .\dist\ --target myserver:/var/www/ --dry-run
 
 ## Remote Deployment
 
-Shuttle needs a lightweight agent (`shuttle_linux`) running on the remote Linux server for delta transfers. Without the agent, Shuttle still works but falls back to **full upload** (entire file every time).
+Shuttle needs a lightweight agent running on the remote Linux server for delta transfers. Without the agent, Shuttle still works but falls back to **full upload** (entire file every time).
 
 ### Prerequisites
 
-- **Remote OS**: Linux x86_64 (`shuttle_linux` is an amd64 binary)
+- **Remote OS**: Linux x86_64 or aarch64 (supports amd64 and arm64)
 - **SSH access**: Remote user needs read/write permission on target directories
-- **Local file**: `shuttle_linux` must be in the same directory as `shuttle.exe` (download both from the Release page)
+- **No manual download needed**: agents are embedded in `shuttle.exe`, auto-detected and deployed
 
 ### Method 1: TUI One-Click Deploy (Recommended)
 
@@ -157,21 +160,13 @@ shuttle deploy myserver
 
 Same effect as the TUI one-click deploy.
 
-### Method 3: Manual Deploy
+### Method 3: Manual Deploy (Fallback)
 
-If automatic deployment fails (e.g. network restrictions), upload manually:
+If automatic deployment fails, download the standalone agent from [Releases](https://github.com/henryborner/shuttle/releases) for your remote architecture:
 
 ```powershell
-# From Windows locally
-scp shuttle_linux user@host:~/shuttle
+scp shuttle_linux_amd64 user@host:~/shuttle
 ssh user@host chmod +x ~/shuttle
-```
-
-Ensure `shuttle` is in the remote PATH, or move it to `/usr/local/bin/`:
-
-```bash
-# On the remote server
-sudo mv ~/shuttle /usr/local/bin/shuttle
 ```
 
 ### Verify Deployment
@@ -236,11 +231,11 @@ Each server can have a protect list (glob patterns). Matching remote files are *
 
 ### Remote Agent
 
-Shuttle connects to Linux servers via SSH and runs a lightweight `shuttle_linux` agent on the remote side. The agent handles:
+Shuttle connects to Linux servers via SSH and runs a lightweight agent (slim build, ~2 MB, supports amd64/arm64). The agent handles:
 - Receiving signature lists and performing block matching
 - Reconstructing files from delta instructions
 - Caching block signatures for faster repeat syncs
 
-The agent can be deployed or updated from the TUI servers page.
+Agents are embedded in shuttle.exe. Deploy via TUI with one click — remote architecture (x86_64 / aarch64) is auto-detected.
 
 ## License

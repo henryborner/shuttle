@@ -1,5 +1,5 @@
-// Package agent manages the remote shuttle_linux agent deployment.
-// agent 包管理远端 shuttle_linux agent 的部署、检测和清理。
+// Package agent manages remote agent deployment (embedded multi-arch binaries).
+// agent 包管理远端 agent 的部署（内嵌多架构二进制）、检测和清理。
 package agent
 
 import (
@@ -263,8 +263,8 @@ func getAgentBinary(goarch string) ([]byte, string, error) {
 		}
 	}
 
-	// Fallback: look for shuttle_linux on disk (legacy mode).
-	// 回退：在磁盘上查找 shuttle_linux（兼容旧模式）。
+	// Fallback: look for a local agent binary on disk (legacy mode).
+	// 回退：在磁盘上查找本地 agent 二进制（兼容旧模式）。
 	localBin, err := findLocalBinary()
 	if err != nil {
 		return nil, "", fmt.Errorf("no embedded agent for %s and %w", goarch, err)
@@ -276,9 +276,9 @@ func getAgentBinary(goarch string) ([]byte, string, error) {
 	return data, "file:" + localBin, nil
 }
 
-// findLocalBinary locates shuttle_linux next to the current executable,
-// falling back to the current working directory.
-// findLocalBinary 定位与当前可执行文件同目录的 shuttle_linux，其次尝试当前工作目录。
+// findLocalBinary locates a local agent binary next to the current executable
+// or in the current working directory (legacy fallback when embed is unavailable).
+// findLocalBinary 查找本地 agent 二进制（embed 不可用时的兼容回退）。
 func findLocalBinary() (string, error) {
 	exePath, err := os.Executable()
 	if err == nil {

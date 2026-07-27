@@ -24,8 +24,11 @@ shuttle push web           # 一键同步
 
 从 [Releases](https://github.com/henryborner/shuttle/releases) 下载：
 
-- **`shuttle.exe`** — Windows 主程序
-- **`shuttle_linux`** — Linux 远程 agent（通过 TUI 部署到服务器）
+- **`shuttle.exe`** — Windows 主程序（内嵌 linux/amd64 + linux/arm64 agent，自动检测远端架构）
+
+独立 agent（按需下载）：
+- **`shuttle_linux_amd64`** — amd64 agent（~740 KB）
+- **`shuttle_linux_arm64`** — arm64 agent（~620 KB）
 
 ## 快速开始
 
@@ -125,13 +128,13 @@ shuttle push --source .\dist\ --target myserver:/var/www/ --dry-run
 
 ## 远程部署
 
-Shuttle 需要在远端 Linux 服务器上运行一个轻量 agent（`shuttle_linux`）才能实现增量传输。没有 agent 时，Shuttle 仍可工作，但会回退为**全量上传**（每次都传整个文件）。
+Shuttle 需要在远端 Linux 服务器上运行一个轻量 agent 才能实现增量传输。没有 agent 时，Shuttle 仍可工作，但会回退为**全量上传**（每次都传整个文件）。
 
 ### 前置条件
 
-- **远端系统**：Linux x86_64（`shuttle_linux` 是 Linux amd64 二进制）
+- **远端系统**：Linux x86_64 或 aarch64（支持 amd64 和 arm64）
 - **SSH 访问**：远端用户需有读写目标目录的权限
-- **本地文件**：`shuttle_linux` 必须与 `shuttle.exe` 放在同一目录（从 Release 页面一并下载）
+- **无需手动下载**：agent 已内嵌在 `shuttle.exe` 中，部署时自动检测架构并上传
 
 ### 方式一：TUI 一键部署（推荐）
 
@@ -157,21 +160,13 @@ shuttle deploy myserver
 
 效果与 TUI 一键部署完全相同。
 
-### 方式三：手动部署
+### 方式三：手动部署（备用）
 
-如果自动部署失败（如网络限制），可手动上传：
+如果自动部署失败，从 [Releases](https://github.com/henryborner/shuttle/releases) 下载对应架构的独立 agent，然后：
 
 ```powershell
-# Windows 本地执行
-scp shuttle_linux user@host:~/shuttle
+scp shuttle_linux_amd64 user@host:~/shuttle
 ssh user@host chmod +x ~/shuttle
-```
-
-确保 `shuttle` 在远端 PATH 中，或将其移动到 `/usr/local/bin/`：
-
-```bash
-# 远端执行
-sudo mv ~/shuttle /usr/local/bin/shuttle
 ```
 
 ### 验证部署
@@ -236,12 +231,12 @@ Shuttle 使用自有的二进制线协议（非标准 rsync 协议），参数�
 
 ### 远端 Agent
 
-Shuttle 通过 SSH 连接到 Linux 服务器，并在远端运行一个轻量 `shuttle_linux` agent。agent 负责：
+Shuttle 通过 SSH 连接到 Linux 服务器，并在远端运行一个轻量 agent（精简版，仅 ~2 MB，支持 amd64/arm64）。agent 负责：
 - 接收签名列表并执行块匹配
 - 根据 delta 指令重构文件
 - 缓存块签名以加速重复同步
 
-可通过 TUI 的服务器页面一键部署或更新 agent。
+Agent 已内嵌在 shuttle.exe 中，通过 TUI 一键部署，自动检测远端架构（x86_64 / aarch64）。
 
 ## 许可证
 

@@ -26,18 +26,23 @@ The agent is **not required**. If absent, shuttle falls back to full file upload
 
 | Property | Value |
 |----------|-------|
-| Name | `shuttle_linux` (distribution) / `shuttle` (installed) |
-| Platform | Linux amd64 |
-| Build | `GOOS=linux GOARCH=amd64 go build` |
-| Size | ~10 MB (static, no CGO) |
+| Name | `shuttle` (installed on remote) |
+| Source | Embedded in `shuttle.exe` (per-arch slim binary) |
+| Platforms | linux/amd64, linux/arm64 |
+| Build | `.\build.ps1` (cross-compiles all targets) |
+| Size | ~2.2 MB (amd64), ~2.0 MB (arm64) — static, no CGO |
+| Compression | UPX `--best --lzma` → ~740 KB / ~620 KB |
 
-The same source tree builds both the Windows client (`shuttle.exe`) and the Linux agent.
+The agent is a stripped-down build (`cmd/shuttle_agent/`) that only imports go-rsync + stdlib.
+No cobra, no TUI, no SSH client, no config — only `receive`, `identify`, and `version` commands.
 
 ## 3. Deployment
 
 `shuttle deploy <server>` uploads the agent via SSH:
 
-1. Reads `shuttle_linux` from next to `shuttle.exe`
+1. Runs `uname -m` on the remote to detect CPU architecture (x86_64 → amd64, aarch64 → arm64)
+2. Extracts the matching agent binary from `shuttle.exe`'s embedded filesystem
+3. Falls back to looking for a local `shuttle_linux` file if no matching architecture is embedded
 2. Tries two install paths in order:
 
 | Priority | Path | Requirements |
