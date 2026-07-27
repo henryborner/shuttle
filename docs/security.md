@@ -19,7 +19,7 @@ Shuttle uses a unique identifier mechanism to confirm a remote binary is actuall
 
 **Solution:** A hidden `identify` subcommand outputs a deliberately unique string:
 
-```
+```text
 SHuTtL3_AgEnT_lD:0.1.5.12:linux/amd64:md5,sha256,xxh64,xxh3
 ```
 
@@ -82,12 +82,14 @@ servers:
 ```
 
 Pattern types:
+
 - `*.db` — glob match against the file's basename (any path)
 - `config.yaml` — exact basename match
 - `secrets/` — trailing `/` triggers recursive prefix match (protects entire directory tree)
 - `backups/*.gz` — full path glob match
 
 Protected files are:
+
 - Never overwritten during sync
 - Never deleted during cleanup
 - Listed as `PROT` in dry-run output
@@ -96,7 +98,7 @@ Protected files are:
 
 If the source directory contains no files and `delete: true` is set, shuttle refuses to sync:
 
-```
+```text
 safety: source contains no files and delete is enabled — refusing to wipe remote target; set delete:false or ensure source is not empty (check skipDots/exclude settings)
 ```
 
