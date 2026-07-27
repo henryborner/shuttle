@@ -24,11 +24,18 @@ shuttle push web           # 一键同步
 
 从 [Releases](https://github.com/henryborner/shuttle/releases) 下载：
 
-- **`shuttle.exe`** — Windows 主程序（内嵌 linux/amd64 + linux/arm64 agent，自动检测远端架构）
+- **`shuttle.exe`** — Windows 主程序（~3 MB，UPX 压缩）
+  - 内嵌 linux/amd64 + linux/arm64 agent，自动检测远端架构
+
+> ⚠️ `shuttle.exe` 使用 UPX 压缩以减小体积，部分杀毒软件可能误报。
+> 如被拦截，可添加信任或从 [Releases](https://github.com/henryborner/shuttle/releases) 校验 SHA256。
 
 独立 agent（按需下载）：
 - **`shuttle_linux_amd64`** — amd64 agent（~740 KB）
 - **`shuttle_linux_arm64`** — arm64 agent（~620 KB）
+
+> 💡 **从旧版升级？** v0.1.5.15 起，`shuttle_linux` 已拆分为 `shuttle_linux_amd64` / `shuttle_linux_arm64`，
+> 且 agent 已内嵌在 `shuttle.exe` 中。旧版 `shuttle_linux` 文件可以删除。
 
 ## 快速开始
 
@@ -124,6 +131,18 @@ shuttle push --source .\nginx.conf --target myserver:/etc/nginx/nginx.conf
 
 # 模拟运行，预览变更
 shuttle push --source .\dist\ --target myserver:/var/www/ --dry-run
+
+# 扁平映射（不套源文件夹名，直接将内容映射到目标）
+shuttle push --source .\dist\ --target myserver:/var/www/ --flat
+
+# 用校验和检测变化（适合文件时间戳不可靠的场景）
+shuttle push --source .\dist\ --target myserver:/var/www/ --checksum
+
+# 排除特定文件
+shuttle push --source .\dist\ --target myserver:/var/www/ --exclude "*.tmp,*.log"
+
+# 强制全量上传（跳过 delta，适合调试）
+shuttle push --source .\dist\ --target myserver:/var/www/ --no-delta
 ```
 
 ## 快捷键
@@ -249,6 +268,12 @@ Shuttle 通过 SSH 连接到 Linux 服务器，并在远端运行一个轻量 ag
 - 缓存块签名以加速重复同步
 
 Agent 已内嵌在 shuttle.exe 中，通过 TUI 一键部署，自动检测远端架构（x86_64 / aarch64）。
+
+## 延伸阅读
+
+- [Remote Agent](docs/agent.md) — agent 部署、身份验证、搜索路径、签名缓存
+- [Delta Algorithm](docs/delta.md) — rsync delta 传输算法详解、性能基准
+- [Security Design](docs/security.md) — 主机密钥 TOFU、Shell 注入防护、保护模式
 
 ## 许可证
 

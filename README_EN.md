@@ -24,11 +24,19 @@ shuttle push web           # sync a task
 
 Download from [Releases](https://github.com/henryborner/shuttle/releases):
 
-- **`shuttle.exe`** — Windows main program (embedded linux/amd64 + linux/arm64 agents, auto-detect remote arch)
+- **`shuttle.exe`** — Windows main program (~3 MB, UPX-compressed)
+  - Embedded linux/amd64 + linux/arm64 agents, auto-detect remote architecture
+
+> ⚠️ `shuttle.exe` uses UPX compression for smaller size. Some antivirus may flag it.
+> If blocked, add an exception or verify SHA256 from [Releases](https://github.com/henryborner/shuttle/releases).
 
 Standalone agents (download if needed):
 - **`shuttle_linux_amd64`** — amd64 agent (~740 KB)
 - **`shuttle_linux_arm64`** — arm64 agent (~620 KB)
+
+> 💡 **Upgrading from an older version?** Since v0.1.5.15, `shuttle_linux` has been split into
+> `shuttle_linux_amd64` / `shuttle_linux_arm64`, and agents are embedded in `shuttle.exe`.
+> Old `shuttle_linux` files can be deleted.
 
 ## Quick Start
 
@@ -249,5 +257,11 @@ Shuttle connects to Linux servers via SSH and runs a lightweight agent (slim bui
 - Caching block signatures for faster repeat syncs
 
 Agents are embedded in shuttle.exe. Deploy via TUI with one click — remote architecture (x86_64 / aarch64) is auto-detected.
+
+## Further Reading
+
+- [Remote Agent](docs/agent.md) — deployment, identity verification, search paths, signature cache
+- [Delta Algorithm](docs/delta.md) — rsync delta algorithm details, performance benchmarks
+- [Security Design](docs/security.md) — host key TOFU, shell injection prevention, protect patterns
 
 ## License
