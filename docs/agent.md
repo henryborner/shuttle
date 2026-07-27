@@ -43,15 +43,15 @@ No cobra, no TUI, no SSH client, no config — only `receive`, `identify`, and `
 1. Runs `uname -m` on the remote to detect CPU architecture (x86_64 → amd64, aarch64 → arm64)
 2. Extracts the matching agent binary from `shuttle.exe`'s embedded filesystem
 3. Falls back to looking for a local `shuttle_linux` file if no matching architecture is embedded
-2. Tries two install paths in order:
+4. Tries two install paths in order:
 
 | Priority | Path | Requirements |
 |----------|------|-------------|
 | 1 | `/usr/local/bin/shuttle` | Write permission to `/usr/local/bin` |
 | 2 | `$HOME/shuttle` | None (adds `$HOME` to PATH via `.bashrc`) |
 
-3. Runs `identify` to verify the binary is the real Shuttle agent
-4. On failure: removes the binary (`rm -f`) and tries the next path
+5. Runs `identify` to verify the binary is the real Shuttle agent
+6. On failure: removes the binary (`rm -f`) and tries the next path
 
 ## 4. Identity Verification
 
@@ -81,7 +81,7 @@ Each candidate is tested by running `<path> identify`. The first match wins. She
 
 When `shuttle push` runs and no agent is found:
 
-```
+```text
 [WARN] Agent not found on myserver -- falling back to full upload (no delta).
     Run 'shuttle deploy myserver' to enable delta acceleration.
 ```
