@@ -27,14 +27,14 @@ Download from [Releases](https://github.com/henryborner/shuttle/releases):
 - **`shuttle.exe`** — Windows main program (~3 MB, UPX-compressed)
   - Embedded linux/amd64 + linux/arm64 agents, auto-detect remote architecture
 
-> ⚠️ `shuttle.exe` uses UPX compression for smaller size. Some antivirus may flag it.
+> **Note**: `shuttle.exe` uses UPX compression for smaller size. Some antivirus may flag it.
 > If blocked, add an exception or verify SHA256 from [Releases](https://github.com/henryborner/shuttle/releases).
 
 Standalone agents (download if needed):
 - **`shuttle_linux_amd64`** — amd64 agent (~740 KB)
 - **`shuttle_linux_arm64`** — arm64 agent (~620 KB)
 
-> 💡 **Upgrading from an older version?** Since v0.1.5.15, `shuttle_linux` has been split into
+> **Upgrading from an older version?** Since v0.1.5.15, `shuttle_linux` has been split into
 > `shuttle_linux_amd64` / `shuttle_linux_arm64`, and agents are embedded in `shuttle.exe`.
 > Old `shuttle_linux` files can be deleted.
 

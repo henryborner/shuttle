@@ -27,14 +27,14 @@ shuttle push web           # 一键同步
 - **`shuttle.exe`** — Windows 主程序（~3 MB，UPX 压缩）
   - 内嵌 linux/amd64 + linux/arm64 agent，自动检测远端架构
 
-> ⚠️ `shuttle.exe` 使用 UPX 压缩以减小体积，部分杀毒软件可能误报。
+> **注意**：`shuttle.exe` 使用 UPX 压缩以减小体积，部分杀毒软件可能误报。
 > 如被拦截，可添加信任或从 [Releases](https://github.com/henryborner/shuttle/releases) 校验 SHA256。
 
 独立 agent（按需下载）：
 - **`shuttle_linux_amd64`** — amd64 agent（~740 KB）
 - **`shuttle_linux_arm64`** — arm64 agent（~620 KB）
 
-> 💡 **从旧版升级？** v0.1.5.15 起，`shuttle_linux` 已拆分为 `shuttle_linux_amd64` / `shuttle_linux_arm64`，
+> **从旧版升级？** v0.1.5.15 起，`shuttle_linux` 已拆分为 `shuttle_linux_amd64` / `shuttle_linux_arm64`，
 > 且 agent 已内嵌在 `shuttle.exe` 中。旧版 `shuttle_linux` 文件可以删除。
 
 ## 快速开始
