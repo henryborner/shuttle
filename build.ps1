@@ -50,8 +50,21 @@ $env:GOARCH = "arm64"
 go build -ldflags="$ldflags" -o $outDir\shuttle_linux_arm64 .\cmd\shuttle_agent\
 Write-Host "  shuttle_linux_arm64  $( '{0,6:N0} KB' -f ((Get-Item $outDir\shuttle_linux_arm64).Length/1KB) )"
 
-# ── Done ──
+# ── Done (pre-UPX) ──
 Write-Host "`nDone! Output in $outDir\" -ForegroundColor Green
 Get-ChildItem $outDir | ForEach-Object {
     Write-Host "  $($_.Name)  $( '{0,6:N0} KB' -f ($_.Length/1KB) )"
+}
+
+# ── Step 4: UPX compress (optional) ──
+$upx = Get-Command upx -ErrorAction SilentlyContinue
+if ($upx) {
+    Write-Host "`n[4/4] UPX compressing..." -ForegroundColor Cyan
+    upx --best --lzma -q $outDir\* 2>&1 | Out-Null
+    Write-Host "After UPX:" -ForegroundColor Green
+    Get-ChildItem $outDir | ForEach-Object {
+        Write-Host "  $($_.Name)  $( '{0,6:N0} KB' -f ($_.Length/1KB) )"
+    }
+} else {
+    Write-Host "`nUPX not found (skip compression). Install: winget install upx.upx" -ForegroundColor Yellow
 }
