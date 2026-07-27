@@ -2,7 +2,7 @@
 
 # Shuttle — Windows 原生增量文件同步工具
 
-**Shuttle** 是一个 Windows 原生的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库实现 rsync delta 算法，与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。
+**Shuttle** 是一个 Windows 原生的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库实现 rsync delta 算法——只传文件变化部分，100 MB 文件改动 1 字节仅传输约 6 KB，不改动时几乎零流量。与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。
 
 ```powershell
 shuttle                    # 双击启动 TUI

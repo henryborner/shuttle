@@ -2,7 +2,7 @@
 
 # Shuttle — rsync-style delta sync for Windows
 
-**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
+**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Only changed portions are transferred: a 100 MB file with 1 byte changed sends ~6 KB; identical files cost almost zero bandwidth. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
 ```powershell
 shuttle                    # double-click to launch TUI
