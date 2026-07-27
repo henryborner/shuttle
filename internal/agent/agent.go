@@ -54,15 +54,19 @@ func Deploy(srv config.Server) (path string, version string, err error) {
 
 	// 1. Detect remote architecture via uname -m.
 	// 1. 通过 uname -m 检测远端架构。
-	remoteArch, err := detectRemoteArch(client)
-	if err != nil {
-		remoteArch = "" // fall through to fallback
+	remoteArch, archErr := detectRemoteArch(client)
+	if archErr != nil {
+		remoteArch = "" // fall through to local file fallback
 	}
 
 	// 2. Get the matching agent binary (prefer embed, fallback to local file).
 	// 2. 获取匹配的 agent 二进制（优先 embed，回退到本地文件）。
 	binData, source, err := getAgentBinary(remoteArch)
 	if err != nil {
+		// If arch detection failed, include that context in the error.
+		if archErr != nil {
+			return "", "", fmt.Errorf("remote arch detection failed (%v) and %w", archErr, err)
+		}
 		return "", "", err
 	}
 
@@ -291,7 +295,7 @@ func findLocalBinary() (string, error) {
 	if _, err := os.Stat("shuttle_linux"); err == nil {
 		return "shuttle_linux", nil
 	}
-	return "", fmt.Errorf("shuttle_linux not found (place it next to shuttle.exe)")
+	return "", fmt.Errorf("no local agent binary found (embedded agents not available and no shuttle_linux in exe/cwd). Run build.ps1 to regenerate")
 }
 
 // runRemoteCmd executes a command on the remote server and returns stdout.
