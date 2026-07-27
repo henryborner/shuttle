@@ -165,11 +165,12 @@ is reachable and the key or password is accepted.`,
 	deployCmd := &cobra.Command{
 		Use:   "deploy <server name>",
 		Short: "Deploy the shuttle agent to a remote Linux server",
-		Long: `Upload shuttle_linux to the named server and install it.
+		Long: `Auto-detect the remote server architecture and deploy the
+matching agent binary (embedded in shuttle.exe).
 
+Supports linux/amd64 and linux/arm64. No manual download needed.
 Tries /usr/local/bin/shuttle first (needs sudo), then ~/shuttle
-as a non-root fallback. The binary must be named shuttle_linux
-and placed next to shuttle.exe.
+as a non-root fallback.
 
 Once deployed, shuttle push automatically uses delta acceleration
 (sending only file differences) instead of full upload.
@@ -393,7 +394,7 @@ func runDeploy(cmd *cobra.Command, args []string) {
 	path, version, err := agent.Deploy(*s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Manual: scp shuttle_linux %s@%s:~/ ; ssh %s@%s chmod +x ~/shuttle\n", s.User, s.Host, s.User, s.Host)
+		fmt.Fprintf(os.Stderr, "Manual: download from https://github.com/henryborner/shuttle/releases\n")
 		os.Exit(1)
 	}
 	fmt.Printf("OK -- installed to %s (%s)\n", path, version)

@@ -539,8 +539,8 @@ func removeTasksForServer(cfg *config.Config, serverName string) {
 	cfg.Tasks = filtered
 }
 
-// asyncUpdateAgent deploys shuttle_linux to the given server (standalone, no form needed).
-// asyncUpdateAgent 向指定服务器部署 shuttle_linux（独立使用，无需表单）。
+// asyncUpdateAgent deploys the embedded agent to the given server.
+// asyncUpdateAgent 向内嵌 agent 部署到指定服务器（独立使用，无需表单）。
 func asyncUpdateAgent(srv config.Server) tea.Cmd {
 	return func() tea.Msg {
 		path, version, err := agent.Deploy(srv)
