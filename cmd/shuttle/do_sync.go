@@ -60,10 +60,9 @@ func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
 		util.FormatBytes(sent), util.FormatBytes(total))
 }
 func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
-	// Clear progress bar if one was shown
-	if h.hasProgress {
-		fmt.Print("\r" + strings.Repeat(" ", 80) + "\r")
-	}
+	// Always clear line to prevent progress bar leakage from parallel workers.
+	// 始终清行，防止并行 worker 的进度条残留串行。
+	fmt.Print("\r", strings.Repeat(" ", 80), "\r")
 	switch {
 	case evt.IsNew:
 		fmt.Printf("  %s  %s\n", util.Pad("NEW", 5), evt.RelPath)
