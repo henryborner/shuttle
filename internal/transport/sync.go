@@ -449,10 +449,13 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		// delta unavailable, fallback to full upload.
 		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable"); fbErr != nil {
-			return info.Size, 0, fbErr
+			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
+	// Close stdout to release the SSH session (calls session.Wait + session.Close).
+	// stdin is closed explicitly in each path; stderr is closed by the goroutine.
+	defer stdout.Close()
 
 	// read stderr concurrently
 	var errBuf strings.Builder
@@ -463,13 +466,13 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		close(stderrDone)
 	}()
 
-	// 接收远端签名
+	// receive remote signature
 	sig, err := delta.WireDecodeSignature(stdout)
 	if err != nil {
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed"); fbErr != nil {
-			return info.Size, 0, fbErr
+			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
@@ -528,7 +531,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
-			return info.Size, 0, fbErr
+			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
@@ -537,7 +540,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
-			return info.Size, 0, fbErr
+			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
@@ -546,7 +549,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
-			return info.Size, 0, fbErr
+			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
@@ -562,7 +565,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		// 仅对真正的错误做 fallback，忽略非致命警告（如缓存保存失败）。
 		if strings.Contains(errStr, "RECEIVER ERROR:") {
 			if fbErr := e.fallbackUpload(info, remotePath, "remote: "+errStr); fbErr != nil {
-				return info.Size, 0, fbErr
+				return 0, 0, fbErr
 			}
 			return info.Size, 0, nil
 		}
