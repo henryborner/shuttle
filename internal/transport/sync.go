@@ -366,7 +366,12 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		// Sort deepest first so we can remove subdirectories before their parents
 		sort.Slice(emptyDirCandidates, func(i, j int) bool {
-			return strings.Count(emptyDirCandidates[i].Path, "/") > strings.Count(emptyDirCandidates[j].Path, "/")
+			di := strings.Count(emptyDirCandidates[i].Path, "/")
+			dj := strings.Count(emptyDirCandidates[j].Path, "/")
+			if di != dj {
+				return di > dj
+			}
+			return emptyDirCandidates[i].Path > emptyDirCandidates[j].Path
 		})
 		for _, d := range emptyDirCandidates {
 			if !opts.DryRun {
@@ -390,11 +395,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 }
 
 func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
-	// Ensure remote parent directory exists.
-	// 确保远程父目录存在。
-	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
-		e.transport.MkdirAll(dir)
-	}
+	// PutFile already calls MkdirAll internally; no need to duplicate here.
+	// PutFile 内部已调用 MkdirAll，无需在此重复。
 	f, err := os.Open(info.Path)
 	if err != nil {
 		return err
