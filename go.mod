@@ -40,5 +40,3 @@ require (
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )
-
-replace github.com/henryborner/go-rsync => ../go-rsync
