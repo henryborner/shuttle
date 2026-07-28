@@ -154,9 +154,9 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			var fe error
 			if !opts.DryRun {
 				fe = e.uploadFile(lf, remotePath)
+				stats.SentBytes += lf.Size
 			}
 			stats.NewFiles++
-			stats.SentBytes += lf.Size
 			e.hook.OnFileDone(FileEvent{
 				RelPath: relPath, RemotePath: remotePath,
 				FileSize: lf.Size, BytesSent: lf.Size,
