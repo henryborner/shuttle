@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/agent"
@@ -28,22 +29,29 @@ var highRiskDryExts = map[string]string{
 // dryRunHook lists each file's operation in dry-run mode.
 // dryRunHook 在 dry-run 模式下列出每个文件的操作。
 type dryRunHook struct {
+	mu           sync.Mutex
 	deletedFiles []string
 	hasProgress  bool // whether a progress bar was displayed / 是否显示过进度条
 }
 
 func (h *dryRunHook) OnSyncStart(name string, total int) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	fmt.Printf("  %d files to check...\n", total)
 	return nil
 }
 func (h *dryRunHook) OnFileStart(path string, size int64) error {
+	h.mu.Lock()
 	h.hasProgress = false
+	h.mu.Unlock()
 	return nil
 }
 func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
 	if total <= 0 {
 		return
 	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.hasProgress = true
 	pct := int(sent * 100 / total)
 	if pct > 100 {
@@ -60,8 +68,11 @@ func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
 		util.FormatBytes(sent), util.FormatBytes(total))
 }
 func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
-	// Always clear line to prevent progress bar leakage from parallel workers.
-	// 始终清行，防止并行 worker 的进度条残留串行。
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Clear the progress bar line (80 cols covers the max ~77-char bar).
+	// Mutex guarantees no other goroutine writes between clear and status.
+	// 清除进度条行（80列覆盖最长~77字符的进度条），mutex 保证原子性。
 	fmt.Print("\r", strings.Repeat(" ", 80), "\r")
 	switch {
 	case evt.IsNew:
@@ -82,7 +93,10 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	}
 	return nil
 }
+
 func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	// summary
 	fmt.Println()
 	fmt.Println("  -- Summary --")
