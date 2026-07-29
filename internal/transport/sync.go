@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/fs"
@@ -494,9 +495,11 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 
-	// Wrap stdin to count actual wire bytes (includes match instruction
-	// headers, not just literal payload).
-	wc := &writeCounter{w: stdin}
+	// Wrap stdin in a bufio.Writer so the EOS marker is flushed to the
+	// SSH pipe before Close().  Without the flush, the remote may never
+	// receive the end-of-stream signal and hang waiting for more data.
+	bw := bufio.NewWriter(stdin)
+	wc := &writeCounter{w: bw}
 
 	const batchSize = 256
 	batch := make([]delta.MatchResult, 0, batchSize)
@@ -530,6 +533,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return nil
 	})
 	if err != nil {
+		bw.Flush()
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
@@ -539,6 +543,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	}
 	// Flush remaining batch.
 	if err := flushBatch(); err != nil {
+		bw.Flush()
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
@@ -548,6 +553,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	}
 	// End-of-stream marker: count=0 tells receiver we're done.
 	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
+		bw.Flush()
 		stdin.Close()
 		<-stderrDone
 		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
@@ -556,8 +562,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return info.Size, 0, nil
 	}
 
-	// Instructions already streamed to remote via the callback above.
-	// Close stdin to signal remote to start reconstruction.
+	// Flush buffered writes then close stdin to signal remote to start reconstruction.
+	bw.Flush()
 	stdin.Close()
 	<-stderrDone
 
