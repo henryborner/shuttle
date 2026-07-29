@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/henryborner/go-rsync v0.4.2-0.20260729045027-de62db5d33e9
+	github.com/henryborner/go-rsync v0.4.2-0.20260729095505-0692a5d16f32
 	github.com/pkg/sftp v1.13.10
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.53.0
