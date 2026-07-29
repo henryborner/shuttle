@@ -347,7 +347,7 @@ func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.
 // sync.Once ensures session.Wait() is only called once (calling it twice deadlocks).
 type sessionReadCloser struct {
 	io.Reader
-	session *ssh.Session
+	session  *ssh.Session
 	waitOnce sync.Once
 }
 

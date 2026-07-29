@@ -63,7 +63,7 @@ func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
 	if filled < barWidth {
 		bar += ">" + strings.Repeat(" ", barWidth-filled-1)
 	}
-	fmt.Printf("\r  %s  [%s] %d%%  %s/%s\033[K",
+	fmt.Printf("\r  %s  [%s] %d%%  %s/%s",
 		util.Pad(filepath.Base(path), 24), bar, pct,
 		util.FormatBytes(sent), util.FormatBytes(total))
 }

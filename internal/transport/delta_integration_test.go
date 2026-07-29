@@ -100,60 +100,80 @@ func (m *mockTransport) RemoveRecursive(path string) error {
 	return nil
 }
 
-// Exec simulates a remote "shuttle receive" process.
-// It reads delta instructions from stdin, generates a signature of the old file
-// (if it exists on the remote), writes the signature to stdout, then decodes
-// instructions from stdin and reconstructs the new file.
+// Exec simulates a remote shuttle_agent receive process.
+// Supports --sig-only (write signature, exit) and --from-file (read instructions
+// from file instead of stdin).
 func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	if m.execErrors {
 		return nil, nil, nil, fmt.Errorf("mock exec failure")
 	}
 
-	// Parse remotePath from the command: "shuttle receive --algo 'md5' '/remote/path'"
-	remotePath := extractRemotePath(cmd)
+	sigOnly, fromFile, remotePath := parseReceiveCmd(cmd)
+	if remotePath == "" {
+		return nil, nil, nil, fmt.Errorf("mock: cannot parse remote path from: %s", cmd)
+	}
 
 	stdinR, stdinW := io.Pipe()
 	stdoutR, stdoutW := io.Pipe()
 	stderrR, stderrW := io.Pipe()
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		defer stdinR.Close()
 		defer stdoutW.Close()
 		defer stderrW.Close()
 
-		// Get the old remote file content.
 		oldData, exists := m.files[remotePath]
 		if m.corruptSig {
-			// Write corrupt signature (invalid header).
 			stdoutW.Write([]byte{0xFF, 0xFF, 0xFF, 0xFF})
 			return
 		}
 
-		if !exists || len(oldData) == 0 {
-			// Remote file doesn't exist — write empty signature.
-			sig := delta.GenerateSignature([]byte{}, 700, delta.GetDefault())
-			delta.WireEncodeSignature(stdoutW, sig)
-		} else {
-			// Generate signature from old remote file.
-			blockSize := delta.CalculateBlockSize(int64(len(oldData)))
-			sig := delta.GenerateSignature(oldData, blockSize, delta.GetDefault())
-
-			var sigBuf bytes.Buffer
-			if err := delta.WireEncodeSignature(&sigBuf, sig); err != nil {
-				fmt.Fprintf(stderrW, "encode sig: %v", err)
-				return
-			}
-			if _, err := stdoutW.Write(sigBuf.Bytes()); err != nil {
-				return
+		// --from-file mode: only reconstruct, don't write signature
+		// (caller already has the sig from a prior --sig-only call).
+		if fromFile == "" {
+			// Write signature to stdout (for --sig-only or legacy stdin mode).
+			if !exists || len(oldData) == 0 {
+				sig := delta.GenerateSignature([]byte{}, 700, delta.GetDefault())
+				delta.WireEncodeSignature(stdoutW, sig)
+			} else {
+				blockSize := delta.CalculateBlockSize(int64(len(oldData)))
+				sig := delta.GenerateSignature(oldData, blockSize, delta.GetDefault())
+				var sigBuf bytes.Buffer
+				if err := delta.WireEncodeSignature(&sigBuf, sig); err != nil {
+					fmt.Fprintf(stderrW, "encode sig: %v", err)
+					return
+				}
+				if _, err := stdoutW.Write(sigBuf.Bytes()); err != nil {
+					return
+				}
 			}
 		}
 
-		// Read instructions from stdin and reconstruct.
+		// --sig-only: exit after sending signature (don't read instructions).
+		if sigOnly {
+			return
+		}
+
+		// Read instructions: from --from-file path, or from stdin (legacy).
+		var instReader io.Reader = stdinR
+		if fromFile != "" {
+			data, ok := m.files[fromFile]
+			if !ok {
+				fmt.Fprintf(stderrW, "mock: --from-file not found: %s", fromFile)
+				return
+			}
+			instReader = bytes.NewReader(data)
+			// Clean up the temp file (simulates `rm -f`).
+			delete(m.files, fromFile)
+		}
+
+		// Reconstruct.
 		if !exists || len(oldData) == 0 {
-			// No old file — all instructions should be literals.
 			recon := delta.NewReconstructor([]byte{}, 700, delta.GetDefault())
 			var result bytes.Buffer
-			err := delta.DecodeInstructionsStreamAll(stdinR, func(mr delta.MatchResult) error {
+			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)
 			})
 			if err != nil && err != io.EOF {
@@ -169,7 +189,7 @@ func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.Read
 			}
 			recon := delta.NewReconstructor(oldData, sig.BlockSize, delta.GetDefault(), blockLens)
 			var result bytes.Buffer
-			err := delta.DecodeInstructionsStreamAll(stdinR, func(mr delta.MatchResult) error {
+			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)
 			})
 			if err != nil && err != io.EOF {
@@ -180,13 +200,60 @@ func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.Read
 		}
 	}()
 
-	return stdinW, stdoutR, stderrR, nil
+	return stdinW,
+		&mockReadCloser{Reader: stdoutR, done: done},
+		&mockReadCloser{Reader: stderrR, done: done},
+		nil
+}
+
+// mockReadCloser wraps an io.Reader and waits for a background goroutine on Close(),
+// simulating SSH session.Wait() behavior.
+type mockReadCloser struct {
+	io.Reader
+	done chan struct{}
+}
+
+func (m *mockReadCloser) Close() error {
+	<-m.done
+	return nil
+}
+
+// parseReceiveCmd extracts flags and path from a shuttle receive command.
+// Handles formats:
+//
+//	shuttle receive --sig-only --algo 'md5' '/remote/path'
+//	shuttle receive --from-file '/tmp/x' --algo 'md5' '/remote/x' && rm -f '/tmp/x'
+func parseReceiveCmd(cmd string) (sigOnly bool, fromFile string, remotePath string) {
+	parts := strings.Fields(cmd)
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "--sig-only" {
+			sigOnly = true
+		}
+		if parts[i] == "--from-file" && i+1 < len(parts) {
+			fromFile = strings.Trim(parts[i+1], "'\"")
+			i++
+		}
+	}
+	// remotePath: last path-like arg before && or end-of-cmd, that isn't the --from-file value.
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := parts[i]
+		if p == "&&" || p == ";" || p == "rm" || p == "-f" {
+			continue
+		}
+		p = strings.Trim(p, "'\"")
+		if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, ".") {
+			if p != fromFile || fromFile == "" {
+				remotePath = p
+				break
+			}
+		}
+	}
+	return
 }
 
 // extractRemotePath extracts the remote file path from a shuttle receive command.
+// Deprecated: use parseReceiveCmd for new two-phase commands.
 func extractRemotePath(cmd string) string {
-	// Command format: `shuttle receive --algo 'md5' '/remote/path'`
-	// The last quoted string is the remote path.
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
 		return ""

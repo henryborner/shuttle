@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -200,8 +201,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		stats.TotalBytes += lf.Size
 	}
 
-	// Second pass: delta transfers (parallel worker pool, real-time callbacks)
-	// 第二遍：delta 传输（并行 worker pool，实时回调防 TUI 卡顿）
+	// Second pass: delta transfers (parallel worker pool, single SSH session per file).
+	// 第二遍：delta 传输（并行 worker pool，单 SSH session per file）
 	if len(deltaJobs) > 0 && !opts.DryRun {
 		workers := opts.Workers
 		if workers <= 0 {
@@ -431,89 +432,72 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// uploadFileDelta is an rsync-style delta transfer: get remote old file signature →
-// delta match → push instructions. Uses goroutines to read local file and remote
-// signature in parallel to shorten pipeline latency. Large files use mmap to avoid
-// loading entirely into memory; falls back to ReadFile on mmap failure.
-// If delta fails (e.g. no shuttle on remote), automatically falls back to full upload.
+// uploadFileDelta is an rsync-style delta transfer using a single SSH session.
+// Remote writes signature to stdout → local matches → local writes instructions to
+// stdin → remote reconstructs. On any failure, falls back to full upload.
 //
-// uploadFileDelta rsync式增量传输：远端旧文件签名 → delta匹配 → 推送指令。
-// 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
-// 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
-// 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
+// uploadFileDelta 单 SSH session 的 rsync 式增量传输：
+// 远端签名写 stdout → 本地匹配 → 本地指令写 stdin → 远端重建。
+// 任何环节失败自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	algo := delta.GetDefault()
-	cmd := fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
-	if checksum {
-		cmd = fmt.Sprintf("shuttle receive --algo '%s' --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+
+	cmd := fmt.Sprintf("shuttle receive --algo '%s' --no-cache '%s'",
+		algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	if !checksum {
+		cmd = fmt.Sprintf("shuttle receive --algo '%s' '%s'",
+			algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	}
-	stdin, stdout, stderr, err := e.transport.Exec(cmd)
-	if err != nil {
-		// delta unavailable, fallback to full upload.
+	stdin, stdout, stderr, execErr := e.transport.Exec(cmd)
+	if execErr != nil {
 		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable"); fbErr != nil {
 			return 0, 0, fbErr
 		}
 		return info.Size, 0, nil
 	}
-	// Close stdout to release the SSH session (calls session.Wait + session.Close).
-	// stdin is closed explicitly in each path; stderr is closed by the goroutine.
-	defer stdout.Close()
 
-	// read stderr concurrently
-	var errBuf strings.Builder
+	// Drain stderr in background; signal completion via channel (same pattern as v0.1.5.16).
+	// Channel receive is zero-I/O once remote exits, unlike session.Wait().
 	stderrDone := make(chan struct{})
 	go func() {
-		io.Copy(&errBuf, stderr)
-		stderr.Close()
+		io.Copy(io.Discard, stderr)
 		close(stderrDone)
 	}()
 
-	// receive remote signature
-	sig, err := delta.WireDecodeSignature(stdout)
-	if err != nil {
-		stdin.Close()
-		<-stderrDone
-		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed"); fbErr != nil {
-			return 0, 0, fbErr
+	// Ensure stdout is closed (session.Wait + session.Close) on all paths.
+	// By the time this runs, <-stderrDone guarantees remote already exited,
+	// so Wait() returns immediately — no extra SSH protocol overhead.
+	stdoutClosed := false
+	defer func() {
+		if !stdoutClosed {
+			<-stderrDone
+			stdout.Close()
 		}
+	}()
+
+	// Phase 1: read signature from stdout.
+	sig, decErr := delta.WireDecodeSignature(stdout)
+	if decErr != nil {
+		stdin.Close()
+		e.fallbackUpload(info, remotePath, "signature decode failed")
 		return info.Size, 0, nil
 	}
 
-	// Open local file for streaming (no mmap, no full read into memory).
-	f, err := os.Open(info.Path)
-	if err != nil {
+	// Phase 2: open local file, delta match.
+	f, openErr := os.Open(info.Path)
+	if openErr != nil {
 		stdin.Close()
-		<-stderrDone
-		return 0, 0, fmt.Errorf("open local: %w", err)
+		e.fallbackUpload(info, remotePath, "open local failed")
+		return info.Size, 0, nil
 	}
 	defer f.Close()
 
-	// Streaming match + streaming send: instructions are batched and
-	// written to stdin as they are discovered.  No full instruction list
-	// is held in memory.
 	eng := delta.NewMatchEngine(sig.BlockSize, algo)
 	eng.LoadSignature(sig)
 
-	// Wrap stdin to count actual wire bytes (includes match instruction
-	// headers, not just literal payload).
-	wc := &writeCounter{w: stdin}
-
-	const batchSize = 256
-	batch := make([]delta.MatchResult, 0, batchSize)
-	flushBatch := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		if err := delta.WireEncodeInstructions(wc, batch); err != nil {
-			return err
-		}
-		batch = batch[:0]
-		return nil
-	}
-
+	var instructions []delta.MatchResult
 	var lastProgress int64
-	err = eng.SearchReader(f, info.Size, func(mr delta.MatchResult) error {
-		// Track search progress through the new file
+	searchErr := eng.SearchReader(f, info.Size, func(mr delta.MatchResult) error {
 		if mr.Offset > lastProgress {
 			lastProgress = mr.Offset
 			e.hook.OnFileProgress(info.Path, lastProgress, info.Size)
@@ -523,65 +507,46 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 			cp.Data = make([]byte, len(mr.Data))
 			copy(cp.Data, mr.Data)
 		}
-		batch = append(batch, cp)
-		if len(batch) >= batchSize {
-			return flushBatch()
-		}
+		instructions = append(instructions, cp)
 		return nil
 	})
-	if err != nil {
+	if searchErr != nil {
 		stdin.Close()
-		<-stderrDone
-		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
-			return 0, 0, fbErr
-		}
-		return info.Size, 0, nil
-	}
-	// Flush remaining batch.
-	if err := flushBatch(); err != nil {
-		stdin.Close()
-		<-stderrDone
-		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
-			return 0, 0, fbErr
-		}
-		return info.Size, 0, nil
-	}
-	// End-of-stream marker: send empty batch (count=0) via WireEncodeInstructions
-	// to ensure the signal goes through the full SSH write path.
-	if err := delta.WireEncodeInstructions(wc, nil); err != nil {
-		stdin.Close()
-		<-stderrDone
-		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
-			return 0, 0, fbErr
-		}
+		e.fallbackUpload(info, remotePath, "delta search failed")
 		return info.Size, 0, nil
 	}
 
-	// Close stdin to signal remote to start reconstruction.
-	stdin.Close()
+	// Phase 3: encode and write instructions to stdin.
+	var wireBuf bytes.Buffer
+	if encErr := delta.WireEncodeInstructions(&wireBuf, instructions); encErr != nil {
+		stdin.Close()
+		e.fallbackUpload(info, remotePath, "delta encode failed")
+		return info.Size, 0, nil
+	}
+	// End-of-stream marker: count=0 tells the receiver we're done.
+	// Without this, DecodeInstructionsStreamAll gets io.EOF and the agent deletes
+	// the reconstructed temp file (treating EOF as an error).
+	delta.WireEncodeInstructions(&wireBuf, nil)
+	wireData := wireBuf.Bytes()
+	if _, writeErr := stdin.Write(wireData); writeErr != nil {
+		stdin.Close()
+		e.fallbackUpload(info, remotePath, "delta write failed")
+		return info.Size, 0, nil
+	}
+	stdin.Close() // signal EOF → remote starts reconstruction
+
+	// Wait for remote to exit via stderr EOF (channel receive — zero network I/O).
 	<-stderrDone
 
-	if errBuf.Len() > 0 {
-		errStr := strings.TrimSpace(errBuf.String())
-		// Only fall back on actual errors, not non-fatal warnings (e.g. cache save).
-		// 仅对真正的错误做 fallback，忽略非致命警告（如缓存保存失败）。
-		if strings.Contains(errStr, "RECEIVER ERROR:") {
-			if fbErr := e.fallbackUpload(info, remotePath, "remote: "+errStr); fbErr != nil {
-				return 0, 0, fbErr
-			}
-			return info.Size, 0, nil
-		}
-		// Non-fatal stderr — delta succeeded, just log it.
-		// 非致命 stderr — delta 成功，仅记录。
-		fmt.Fprintf(os.Stderr, "delta: remote stderr for %s: %s\n", filepath.Base(info.Path), errStr)
-	}
+	// Remote already exited; session.Wait() returns immediately.
+	stdout.Close()
+	stdoutClosed = true
 
-	if err := e.transport.SetModTime(remotePath, info.ModTime); err != nil {
-		fmt.Fprintf(os.Stderr, "delta: set mtime for %s: %v\n", filepath.Base(info.Path), err)
-	}
+	// Now safe to sync mtime.
+	e.transport.SetModTime(remotePath, info.ModTime)
 
 	savedBytes = info.Size - eng.LiteralBytes
-	return wc.n, savedBytes, nil
+	return int64(len(wireData)), savedBytes, nil
 }
 
 // fallbackUpload attempts a full upload after delta fails.
@@ -593,18 +558,6 @@ func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason strin
 	}
 	fmt.Fprintf(os.Stderr, "delta: %s (fell back to full upload for %s)\n", reason, filepath.Base(info.Path))
 	return nil
-}
-
-// writeCounter wraps an io.Writer and counts bytes written.
-type writeCounter struct {
-	w io.Writer
-	n int64
-}
-
-func (c *writeCounter) Write(p []byte) (int, error) {
-	n, err := c.w.Write(p)
-	c.n += int64(n)
-	return n, err
 }
 
 // LocalFileInfo describes a local file discovered during scanning.
