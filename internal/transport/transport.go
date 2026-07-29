@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/henryborner/shuttle/internal/util"
@@ -343,16 +344,20 @@ func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.
 }
 
 // sessionReadCloser wraps an io.Reader and closes the SSH session on the first Close call.
+// sync.Once ensures session.Wait() is only called once (calling it twice deadlocks).
 type sessionReadCloser struct {
 	io.Reader
 	session *ssh.Session
+	waitOnce sync.Once
 }
 
 func (s *sessionReadCloser) Close() error {
-	// Wait returns the remote command's exit status; log non-zero exits for diagnostics.
-	// Wait 返回远程命令的退出状态；记录非零退出码用于诊断。
-	if err := s.session.Wait(); err != nil {
-		fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", err)
-	}
+	var waitErr error
+	s.waitOnce.Do(func() {
+		waitErr = s.session.Wait()
+		if waitErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", waitErr)
+		}
+	})
 	return s.session.Close()
 }

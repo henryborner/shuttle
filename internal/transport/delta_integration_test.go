@@ -550,3 +550,61 @@ func TestSync_ExcludeDeleteInteraction(t *testing.T) {
 
 	t.Logf("deleted: %d files", stats.DeletedFiles)
 }
+
+// TestUploadFileDelta_SmallFileBoundary reproduces a hang reported with
+// ~33KB files (e.g. KaTeX font files).  The file size is close to a
+// blockSize boundary — the last window is partial but close to full.
+func TestUploadFileDelta_SmallFileBoundary(t *testing.T) {
+	sizes := []int{
+		33484, // reported hang size (~32.7 KiB)
+		33400,
+		33500,
+		32768, // exact 32 KiB
+		32800,
+	}
+
+	for _, sz := range sizes {
+		t.Run(fmt.Sprintf("size=%d", sz), func(t *testing.T) {
+			tmpDir := t.TempDir()
+			localPath := filepath.Join(tmpDir, "font.woff")
+
+			// Use deterministic binary-like data.
+			data := make([]byte, sz)
+			for i := range data {
+				data[i] = byte((i*31 + 17) % 251)
+			}
+			os.WriteFile(localPath, data, 0644)
+
+			// Remote has slightly different version (first 4KB modified).
+			oldData := make([]byte, sz)
+			copy(oldData, data)
+			for i := 0; i < 4096 && i < sz; i++ {
+				oldData[i] ^= 0xFF
+			}
+
+			mock := newMockTransport()
+			remotePath := "/remote/font.woff"
+			mock.files[remotePath] = oldData
+
+			eng := NewSyncEngine(mock)
+			info := LocalFileInfo{Path: localPath, Size: int64(sz), ModTime: time.Now()}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				eng.uploadFileDelta(info, remotePath, false)
+			}()
+
+			select {
+			case <-done:
+				// Verify reconstruction.
+				remoteData := mock.files[remotePath]
+				if !bytes.Equal(remoteData, data) {
+					t.Errorf("size %d: remote file mismatch", sz)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("size %d: uploadFileDelta timed out (likely hung)", sz)
+			}
+		})
+	}
+}
