@@ -206,7 +206,7 @@ SSH 到远端执行：
 
 ```bash
 shuttle version
-# 输出: Shuttle v0.1.5.12  Go: go1.xx  OS: linux  Arch: amd64  Strong: md5  Algos: ...
+# 输出: Shuttle v0.1.5.18  Go: go1.26  OS: linux  Arch: amd64  Strong: md5  Algos: ...
 ```
 
 能输出版本信息即表示 agent 安装成功。
