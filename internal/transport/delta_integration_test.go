@@ -176,7 +176,7 @@ func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.Read
 			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)
 			})
-			if err != nil && err != io.EOF {
+			if err != nil {
 				fmt.Fprintf(stderrW, "decode: %v", err)
 				return
 			}
@@ -192,7 +192,7 @@ func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.Read
 			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)
 			})
-			if err != nil && err != io.EOF {
+			if err != nil {
 				fmt.Fprintf(stderrW, "decode: %v", err)
 				return
 			}

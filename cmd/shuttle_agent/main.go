@@ -20,7 +20,7 @@ import (
 	delta "github.com/henryborner/go-rsync"
 )
 
-const Version = "0.1.5.18"
+const Version = "0.1.5.17"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -63,8 +63,6 @@ func runReceive() {
 	fs := flag.NewFlagSet("receive", flag.ExitOnError)
 	algo := fs.String("algo", "md5", "strong checksum algorithm")
 	noCache := fs.Bool("no-cache", false, "skip signature cache")
-	sigOnly := fs.Bool("sig-only", false, "only send signature, don't reconstruct")
-	fromFile := fs.String("from-file", "", "read instructions from file instead of stdin")
 	fs.Parse(os.Args[2:])
 
 	if fs.NArg() < 1 {
@@ -124,21 +122,6 @@ func runReceive() {
 		os.Exit(1)
 	}
 
-	// --sig-only: exit after sending signature.
-	if *sigOnly {
-		os.Exit(0)
-	}
-
-	// --from-file: read instructions from file instead of stdin.
-	if *fromFile != "" {
-		f, err := os.Open(*fromFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: open --from-file: %v\n", err)
-			os.Exit(1)
-		}
-		os.Stdin = f
-	}
-
 	// 4. Stream-read instructions from stdin → write directly to temp file.
 	tmpPath := filePath + ".shuttle_tmp"
 	out, err := os.Create(tmpPath)
@@ -178,11 +161,14 @@ func runReceive() {
 	recon := delta.NewReconstructor(oldData, blockSize, *algo, blockLens)
 
 	// Streaming pipeline: stdin → decode instructions → write output file.
-	// io.EOF after a valid count=0 end marker is benign — sender just closed stdin.
 	err = delta.DecodeInstructionsStreamAll(os.Stdin, func(inst delta.MatchResult) error {
 		return recon.WriteInstruction(out, inst)
 	})
-	if err != nil && !isEOF(err) {
+	if err != nil {
+		if isEOF(err) {
+			cleanup()
+			os.Exit(0)
+		}
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 流式重建失败: %v\n", err)
 		cleanup()
 		os.Exit(1)

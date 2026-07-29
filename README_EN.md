@@ -195,7 +195,7 @@ SSH into the remote server and run:
 
 ```bash
 shuttle version
-# Output: Shuttle v0.1.5.18  Go: go1.26  OS: linux  Arch: amd64  Strong: md5  Algos: ...
+# Output: Shuttle v0.1.5.17  Go: go1.26  OS: linux  Arch: amd64  Strong: md5  Algos: ...
 ```
 
 Seeing version info means the agent is installed correctly.
