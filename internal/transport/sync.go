@@ -454,7 +454,18 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return info.Size, 0, nil
 	}
 
-	// read stderr concurrently
+	// Read stderr concurrently and close it to release the SSH session.
+	// stderr.Close() calls session.Wait()+session.Close() — the ONE AND ONLY
+	// session cleanup point for this SSH session. stdout is NEVER closed
+	// because stdout and stderr share the same *ssh.Session, and calling
+	// Wait() twice deadlocks (the Go SSH library's exitStatus channel is
+	// capacity-1, single-send). DO NOT add defer stdout.Close() here.
+	//
+	// 并发读取 stderr 并关闭它来释放 SSH session。
+	// stderr.Close() 会调用 session.Wait()+session.Close()——
+	// 这是本 SSH session 唯一的清理点。stdout 绝不 Close，因为 stdout 和
+	// stderr 共享同一个 *ssh.Session，调两次 Wait() 会死锁。
+	// 不要在这里加 defer stdout.Close()。
 	var errBuf strings.Builder
 	stderrDone := make(chan struct{})
 	go func() {

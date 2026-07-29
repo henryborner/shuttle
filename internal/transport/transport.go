@@ -338,7 +338,10 @@ func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.
 		session.Close()
 		return nil, nil, nil, fmt.Errorf("start command failed: %w", err)
 	}
-	// Wrap stdout/stderr so closing either one waits on the session.
+	// stdout and stderr share the same *ssh.Session. Close exactly ONE of
+	// them — calling Close() on both calls session.Wait() twice, which
+	// deadlocks. sync.Once protects against this, but the contract remains:
+	// one session, one Wait().
 	return stdin, &sessionReadCloser{Reader: stdout, session: session},
 		&sessionReadCloser{Reader: stderr, session: session}, nil
 }
