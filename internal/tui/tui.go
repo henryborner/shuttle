@@ -710,7 +710,6 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 	}
 }
 
-
 // highRiskExts 高危文件扩展名，优先显示在删除清单前部
 var highRiskExts = []string{
 	".db", ".sql", ".sqlite", ".sqlite3", ".mdb", ".myd", ".myi", ".frm", ".ibd",

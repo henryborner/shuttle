@@ -115,15 +115,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	var deltaJobs []deltaJob
 
 	for _, lf := range localFiles {
-		relPath, relErr := filepath.Rel(opts.Source, lf.Path)
-		if relErr != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] filepath.Rel(%q, %q): %v\n", opts.Source, lf.Path, relErr)
-		}
-		if relPath == "." || relPath == "" {
-			relPath = filepath.Base(opts.Source)
-		} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
-			relPath = filepath.Join(filepath.Base(opts.Source), relPath)
-		}
+		relPath := resolveRelPath(opts.Source, lf.Path, opts.Flat)
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
 		if !exists && !remoteScanned {
@@ -349,12 +341,7 @@ func BuildLocalInventory(source string, localFiles []LocalFileInfo, flat bool) m
 	inv := make(map[string]bool, len(localFiles))
 
 	for _, lf := range localFiles {
-		rp, _ := filepath.Rel(source, lf.Path)
-		if rp == "." || rp == "" {
-			rp = filepath.Base(source)
-		} else if info, err := os.Stat(source); err == nil && info.IsDir() && !flat {
-			rp = filepath.Join(filepath.Base(source), rp)
-		}
+		rp := resolveRelPath(source, lf.Path, flat)
 		key := filepath.ToSlash(rp)
 		inv[key] = true
 		dir := filepath.ToSlash(filepath.Dir(key))
@@ -418,6 +405,20 @@ func ClassifyOrphans(remoteFiles map[string]FileInfo, localInventory map[string]
 		}
 	}
 	return
+}
+
+// resolveRelPath computes the canonical relative path for a local file under
+// source. For non-flat directory sources, the source base name is prepended.
+// This is the single source of truth for the relative path format used across
+// upload, inventory building, and delete classification.
+func resolveRelPath(source, filePath string, flat bool) string {
+	rp, err := filepath.Rel(source, filePath)
+	if err != nil || rp == "." || rp == "" {
+		rp = filepath.Base(source)
+	} else if info, statErr := os.Stat(source); statErr == nil && info.IsDir() && !flat {
+		rp = filepath.Join(filepath.Base(source), rp)
+	}
+	return rp
 }
 
 func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
