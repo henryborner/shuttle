@@ -17,6 +17,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// lastCfgSaveErr is set by saveConfig on write failure and displayed by View().
+// lastCfgSaveErr 由 saveConfig 在写入失败时设置，由 View() 显示。
+var lastCfgSaveErr string
+
 // startSyncMsg requests the main model to start syncing a task
 type startSyncMsg struct {
 	task config.Task
@@ -423,7 +427,7 @@ func (m *Model) View() string {
 	nav := RenderNav(pageNames(), int(m.activePage), m.width)
 
 	// Calculate page height
-	hasSync := m.syncing || m.syncErr != ""
+	hasSync := m.syncing || m.syncErr != "" || lastCfgSaveErr != ""
 	pageH := m.height - 7
 	if hasSync {
 		pageH -= 5
@@ -470,7 +474,9 @@ func (m *Model) View() string {
 		}
 		syncLine = StyleBorder.Width(m.width - 4).Render(syncLine)
 	} else if m.syncErr != "" {
-		syncLine = StyleDanger.Render("" + m.syncErr)
+		syncLine = StyleDanger.Render("❌ " + m.syncErr)
+	} else if lastCfgSaveErr != "" {
+		syncLine = StyleWarning.Render("⚠ " + lastCfgSaveErr)
 	} else if m.sp.taskName != "" && !m.syncing {
 		errPart := ""
 		if m.syncErr != "" {
@@ -750,9 +756,14 @@ func Run(cfg *config.Config, cfgPath string) error {
 	return err
 }
 
-// saveConfig saves the configuration and logs any errors (best-effort).
+// saveConfig saves the configuration and logs any errors. On failure,
+// the error is surfaced in the TUI via lastCfgSaveErr.
+// saveConfig 保存配置。失败时通过 lastCfgSaveErr 在 TUI 中展示错误。
 func saveConfig(cfg *config.Config, path string) {
 	if err := cfg.Save(path); err != nil {
 		log.Printf("config save: %v", err)
+		lastCfgSaveErr = fmt.Sprintf("Failed to save config: %v", err)
+	} else {
+		lastCfgSaveErr = ""
 	}
 }
