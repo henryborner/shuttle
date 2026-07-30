@@ -24,6 +24,86 @@ type FileInfo struct {
 	IsDir   bool
 }
 
+// RemoteCmd represents a running command on the remote host.
+// The caller reads from Stdout, writes to Stdin, then calls Close()
+// to wait for the command to finish and release resources.
+// RemoteCmd 代表远程主机上正在运行的命令。调用方从 Stdout 读取，向 Stdin 写入，
+// 最后调用 Close() 等待命令完成并释放资源。
+type RemoteCmd struct {
+	Stdin  io.WriteCloser
+	Stdout io.Reader
+
+	stderrDone chan struct{} // closed after stderr fully drained
+	stderrStr  string        // populated before stderrDone is closed
+	cleanupFn  func() error  // optional: session.Wait() + Close() / 可选：session 清理
+	closeOnce  sync.Once
+	closeErr   error
+}
+
+// Close waits for stderr to be fully read, then performs transport-specific cleanup
+// (e.g. ssh.Session.Wait + Close). Safe to call multiple times.
+// Close 等待 stderr 读取完毕，然后执行传输层清理（如 ssh.Session.Wait + Close）。可多次调用。
+func (rc *RemoteCmd) Close() error {
+	rc.closeOnce.Do(func() {
+		<-rc.stderrDone
+		if rc.cleanupFn != nil {
+			rc.closeErr = rc.cleanupFn()
+		}
+	})
+	return rc.closeErr
+}
+
+// Stderr returns any output the remote command wrote to stderr.
+// Blocks until stderr is fully drained.
+// Stderr 返回远程命令写入 stderr 的输出。阻塞直到 stderr 读取完毕。
+func (rc *RemoteCmd) Stderr() string {
+	<-rc.stderrDone
+	return rc.stderrStr
+}
+
+// newRemoteCmd creates a RemoteCmd backed by an SSH session.
+// Starts a background goroutine to drain stderr.
+func newRemoteCmd(stdin io.WriteCloser, stdout io.Reader, stderr io.Reader, session *ssh.Session) *RemoteCmd {
+	cmd := &RemoteCmd{
+		Stdin:      stdin,
+		Stdout:     stdout,
+		stderrDone: make(chan struct{}),
+	}
+	go func() {
+		var buf strings.Builder
+		io.Copy(&buf, stderr)
+		cmd.stderrStr = buf.String()
+		close(cmd.stderrDone)
+	}()
+	cmd.cleanupFn = func() error {
+		waitErr := session.Wait()
+		// session.Close() after Wait() typically returns io.EOF on success —
+		// that's a quirk of the Go SSH library, not a real error.
+		session.Close()
+		if waitErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", waitErr)
+		}
+		return waitErr
+	}
+	return cmd
+}
+
+// newMockRemoteCmd creates a RemoteCmd for testing without a real SSH session.
+func newMockRemoteCmd(stdin io.WriteCloser, stdout io.Reader, stderr io.Reader) *RemoteCmd {
+	cmd := &RemoteCmd{
+		Stdin:      stdin,
+		Stdout:     stdout,
+		stderrDone: make(chan struct{}),
+	}
+	go func() {
+		var buf strings.Builder
+		io.Copy(&buf, stderr)
+		cmd.stderrStr = buf.String()
+		close(cmd.stderrDone)
+	}()
+	return cmd
+}
+
 // Transport is the transport layer interface.
 // Transport 传输层接口。
 type Transport interface {
@@ -39,7 +119,7 @@ type Transport interface {
 	RemoveDirectory(path string) error
 	Stat(path string) (FileInfo, error)
 	SetModTime(path string, mtime time.Time) error
-	Exec(command string) (stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser, err error)
+	Exec(command string) (*RemoteCmd, error)
 }
 
 // SFTPConfig holds SFTP connection parameters.
@@ -305,62 +385,40 @@ func (t *SFTPTransport) Stat(path string) (FileInfo, error) {
 }
 
 // Exec runs a command on the remote host via SSH.
-// Callers MUST close both stdout and stderr to release the SSH session.
+// Returns a RemoteCmd whose Close() method handles all SSH session cleanup —
+// no need to manage stdout/stderr lifecycle separately.
 //
 // WARNING: this method executes arbitrary commands over SSH. Only call with
 // hardcoded or strictly validated command strings — never with user input.
-// Exec 在远程主机上通过 SSH 执行命令。调用者必须关闭 stdout 和 stderr 以释放会话。
+// Exec 在远程主机上通过 SSH 执行命令。返回 RemoteCmd，其 Close() 方法统一处理
+// SSH session 清理——调用方无需单独管理 stdout/stderr 生命周期。
 // 警告：此方法可执行任意 SSH 命令，仅用于硬编码或严格校验的命令字符串，绝不接受用户输入。
-func (t *SFTPTransport) Exec(command string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
+func (t *SFTPTransport) Exec(command string) (*RemoteCmd, error) {
 	if t.sshCli == nil {
-		return nil, nil, nil, fmt.Errorf("not connected")
+		return nil, fmt.Errorf("not connected")
 	}
 	session, err := t.sshCli.NewSession()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("create session failed: %w", err)
+		return nil, fmt.Errorf("create session failed: %w", err)
 	}
 	stdin, err := session.StdinPipe()
 	if err != nil {
 		session.Close()
-		return nil, nil, nil, fmt.Errorf("get stdin pipe failed: %w", err)
+		return nil, fmt.Errorf("get stdin pipe failed: %w", err)
 	}
 	stdout, err := session.StdoutPipe()
 	if err != nil {
 		session.Close()
-		return nil, nil, nil, fmt.Errorf("get stdout pipe failed: %w", err)
+		return nil, fmt.Errorf("get stdout pipe failed: %w", err)
 	}
 	stderr, err := session.StderrPipe()
 	if err != nil {
 		session.Close()
-		return nil, nil, nil, fmt.Errorf("get stderr pipe failed: %w", err)
+		return nil, fmt.Errorf("get stderr pipe failed: %w", err)
 	}
 	if err := session.Start(command); err != nil {
 		session.Close()
-		return nil, nil, nil, fmt.Errorf("start command failed: %w", err)
+		return nil, fmt.Errorf("start command failed: %w", err)
 	}
-	// stdout and stderr share the same *ssh.Session. Close exactly ONE of
-	// them — calling Close() on both calls session.Wait() twice, which
-	// deadlocks. sync.Once protects against this, but the contract remains:
-	// one session, one Wait().
-	return stdin, &sessionReadCloser{Reader: stdout, session: session},
-		&sessionReadCloser{Reader: stderr, session: session}, nil
-}
-
-// sessionReadCloser wraps an io.Reader and closes the SSH session on the first Close call.
-// sync.Once ensures session.Wait() is only called once (calling it twice deadlocks).
-type sessionReadCloser struct {
-	io.Reader
-	session  *ssh.Session
-	waitOnce sync.Once
-}
-
-func (s *sessionReadCloser) Close() error {
-	var waitErr error
-	s.waitOnce.Do(func() {
-		waitErr = s.session.Wait()
-		if waitErr != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", waitErr)
-		}
-	})
-	return s.session.Close()
+	return newRemoteCmd(stdin, stdout, stderr, session), nil
 }

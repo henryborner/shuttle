@@ -103,23 +103,21 @@ func (m *mockTransport) RemoveRecursive(path string) error {
 // Exec simulates a remote shuttle_agent receive process.
 // Supports --sig-only (write signature, exit) and --from-file (read instructions
 // from file instead of stdin).
-func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
+func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 	if m.execErrors {
-		return nil, nil, nil, fmt.Errorf("mock exec failure")
+		return nil, fmt.Errorf("mock exec failure")
 	}
 
 	sigOnly, fromFile, remotePath := parseReceiveCmd(cmd)
 	if remotePath == "" {
-		return nil, nil, nil, fmt.Errorf("mock: cannot parse remote path from: %s", cmd)
+		return nil, fmt.Errorf("mock: cannot parse remote path from: %s", cmd)
 	}
 
 	stdinR, stdinW := io.Pipe()
 	stdoutR, stdoutW := io.Pipe()
 	stderrR, stderrW := io.Pipe()
-	done := make(chan struct{})
 
 	go func() {
-		defer close(done)
 		defer stdinR.Close()
 		defer stdoutW.Close()
 		defer stderrW.Close()
@@ -200,22 +198,7 @@ func (m *mockTransport) Exec(cmd string) (io.WriteCloser, io.ReadCloser, io.Read
 		}
 	}()
 
-	return stdinW,
-		&mockReadCloser{Reader: stdoutR, done: done},
-		&mockReadCloser{Reader: stderrR, done: done},
-		nil
-}
-
-// mockReadCloser wraps an io.Reader and waits for a background goroutine on Close(),
-// simulating SSH session.Wait() behavior.
-type mockReadCloser struct {
-	io.Reader
-	done chan struct{}
-}
-
-func (m *mockReadCloser) Close() error {
-	<-m.done
-	return nil
+	return newMockRemoteCmd(stdinW, stdoutR, stderrR), nil
 }
 
 // parseReceiveCmd extracts flags and path from a shuttle receive command.

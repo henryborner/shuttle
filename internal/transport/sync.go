@@ -276,55 +276,28 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	if opts.Delete {
-		// Build a set of local file relative paths for O(1) lookup.
-		// Also track which directories are still needed (contain at least one local file).
-		// 构建本地文件相对路径集合，同时记录哪些目录仍被需要。
-		localSet := make(map[string]bool, len(localFiles))
-		neededDirs := make(map[string]bool)
-		for _, lf := range localFiles {
-			rp, _ := filepath.Rel(opts.Source, lf.Path)
-			if rp == "." || rp == "" {
-				rp = filepath.Base(opts.Source)
-			} else if info, err := os.Stat(opts.Source); err == nil && info.IsDir() && !opts.Flat {
-				rp = filepath.Join(filepath.Base(opts.Source), rp)
-			}
-			key := filepath.ToSlash(rp)
-			localSet[key] = true
-			// Mark all ancestor directories as needed
-			dir := filepath.ToSlash(filepath.Dir(key))
-			for dir != "." && dir != "/" && dir != "" {
-				neededDirs[dir] = true
-				dir = filepath.ToSlash(filepath.Dir(dir))
-			}
-		}
+		localInventory := BuildLocalInventory(opts.Source, localFiles, opts.Flat)
+		orphanFiles, emptyDirs := ClassifyOrphans(remoteFiles, localInventory, opts.Protect)
 
-		// First pass: delete orphan files only.
-		// Directories are never deleted just because they don't match a local "file" —
-		// that would cause catastrophic data loss (Bug #1).
-		// 第一遍：仅删除孤立文件。目录不会因为匹配不到本地"文件"而被删除，
-		// 否则会导致严重数据丢失（Bug #1）。
+		// Report protected entries (classified by ClassifyOrphans as "not in results
+		// but kept alive"). We need to iterate once more to find them for the hook.
 		for name, rf := range remoteFiles {
-			if rf.IsDir {
-				continue // directories handled in second pass
+			if localInventory[name] {
+				continue
 			}
-			if localSet[name] {
-				continue // file exists locally, keep it
-			}
-			// protect check: remote path matches protect pattern → skip deletion
-			// 保护检查：远端路径匹配 protect 模式则跳过删除
 			if MatchProtect(rf.Path, opts.Protect) {
 				stats.ProtectedFiles++
 				e.hook.OnFileDone(FileEvent{
 					RelPath: name, RemotePath: rf.Path,
 					FileSize: rf.Size, IsProtected: true,
 				})
-				continue
 			}
+		}
+
+		// Delete orphan files.
+		for _, rf := range orphanFiles {
 			if !opts.DryRun {
 				if err := e.transport.Remove(rf.Path); err != nil {
-					// If the file doesn't exist on the remote, it's already gone —
-					// treat as success, not an error (Bug #3).
-					// 如果远端文件已不存在，视为成功而非错误（Bug #3）。
 					if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
 						// File truly doesn't exist — desired state achieved
 					} else {
@@ -334,44 +307,21 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				}
 			}
 			stats.DeletedFiles++
+			relName := filepath.ToSlash(strings.TrimPrefix(rf.Path, opts.Target))
+			relName = strings.TrimPrefix(relName, "/")
 			e.hook.OnFileDone(FileEvent{
-				RelPath: name, RemotePath: rf.Path,
+				RelPath: relName, RemotePath: rf.Path,
 				FileSize: rf.Size, IsDeleted: true,
 			})
 		}
 
-		// Second pass: clean up empty directories (bottom-up by depth).
-		// Only directories NOT needed by any local file are candidates.
-		// RemoveDirectory fails safely if the directory is not empty.
-		// 第二遍：安全清理空目录（按深度从深到浅）。
-		// 仅清理不被任何本地文件需要的目录，非空目录时 RemoveDirectory 安全失败。
-		var emptyDirCandidates []FileInfo
-		for name, rf := range remoteFiles {
-			if !rf.IsDir {
-				continue
-			}
-			if neededDirs[name] {
-				continue
-			}
-			// protect check: remote directory matches protect pattern → skip deletion
-			if MatchProtect(rf.Path, opts.Protect) {
-				stats.ProtectedFiles++
-				e.hook.OnFileDone(FileEvent{
-					RelPath: name, RemotePath: rf.Path,
-					FileSize: rf.Size, IsProtected: true,
-				})
-				continue
-			}
-			emptyDirCandidates = append(emptyDirCandidates, rf)
-		}
-		// Sort deepest first so we can remove subdirectories before their parents
-		sort.Slice(emptyDirCandidates, func(i, j int) bool {
-			return strings.Count(emptyDirCandidates[i].Path, "/") > strings.Count(emptyDirCandidates[j].Path, "/")
+		// Clean up empty directories (bottom-up by depth).
+		sort.Slice(emptyDirs, func(i, j int) bool {
+			return strings.Count(emptyDirs[i].Path, "/") > strings.Count(emptyDirs[j].Path, "/")
 		})
-		for _, d := range emptyDirCandidates {
+		for _, d := range emptyDirs {
 			if !opts.DryRun {
 				if err := e.transport.RemoveDirectory(d.Path); err != nil {
-					// Directory not empty or already gone — both are fine, skip silently
 					continue
 				}
 			}
@@ -387,6 +337,87 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 
 	e.hook.OnSyncDone(stats)
 	return stats, nil
+}
+
+// BuildLocalInventory builds a set of slash-separated relative paths for all
+// files and directories under source. Ancestor directories of files and empty
+// directories are both included — the result answers "does this exist locally?"
+// for any path.
+// BuildLocalInventory 构建本地完整路径清单（斜杠分隔的相对路径），包含文件、
+// 祖先目录和空目录——一个集合回答"本地是否有这个路径"。
+func BuildLocalInventory(source string, localFiles []LocalFileInfo, flat bool) map[string]bool {
+	inv := make(map[string]bool, len(localFiles))
+
+	for _, lf := range localFiles {
+		rp, _ := filepath.Rel(source, lf.Path)
+		if rp == "." || rp == "" {
+			rp = filepath.Base(source)
+		} else if info, err := os.Stat(source); err == nil && info.IsDir() && !flat {
+			rp = filepath.Join(filepath.Base(source), rp)
+		}
+		key := filepath.ToSlash(rp)
+		inv[key] = true
+		dir := filepath.ToSlash(filepath.Dir(key))
+		for dir != "." && dir != "" {
+			inv[dir] = true
+			dir = filepath.ToSlash(filepath.Dir(dir))
+		}
+	}
+
+	filepath.WalkDir(source, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() || p == source {
+			return nil
+		}
+		rp, _ := filepath.Rel(source, p)
+		if !flat {
+			rp = filepath.Join(filepath.Base(source), rp)
+		}
+		inv[filepath.ToSlash(rp)] = true
+		return nil
+	})
+
+	return inv
+}
+
+// ClassifyOrphans classifies remote entries for deletion against a local inventory.
+// Returns orphan files (to delete) and empty directory candidates (to clean up
+// after file deletion). Protected entries and directories kept alive by local or
+// protected files are excluded from both lists.
+// ClassifyOrphans 根据本地清单对远端条目进行删除分类。返回孤立文件（直接删除）
+// 和空目录候选（文件删完后清理）。受保护条目及被保留文件撑住的目录不会出现在结果中。
+func ClassifyOrphans(remoteFiles map[string]FileInfo, localInventory map[string]bool, protect []string) (
+	orphanFiles []FileInfo, emptyDirs []FileInfo) {
+
+	// Track directories kept non-empty by local or protected files.
+	nonEmpty := make(map[string]bool)
+	mark := func(key string) {
+		dir := filepath.ToSlash(filepath.Dir(key))
+		for dir != "." && dir != "" {
+			nonEmpty[dir] = true
+			dir = filepath.ToSlash(filepath.Dir(dir))
+		}
+	}
+
+	for name, rf := range remoteFiles {
+		if localInventory[name] {
+			if !rf.IsDir {
+				mark(name)
+			}
+			continue
+		}
+		if MatchProtect(rf.Path, protect) {
+			mark(name)
+			continue
+		}
+		if rf.IsDir {
+			if !nonEmpty[name] {
+				emptyDirs = append(emptyDirs, rf)
+			}
+		} else {
+			orphanFiles = append(orphanFiles, rf)
+		}
+	}
+	return
 }
 
 func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
@@ -441,11 +472,11 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
 func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
 	algo := delta.GetDefault()
-	cmd := fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+	cmdStr := fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	if checksum {
-		cmd = fmt.Sprintf("shuttle receive --algo '%s' --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
+		cmdStr = fmt.Sprintf("shuttle receive --algo '%s' --no-cache '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	}
-	stdin, stdout, stderr, err := e.transport.Exec(cmd)
+	cmd, err := e.transport.Exec(cmdStr)
 	if err != nil {
 		// delta unavailable, fallback to full upload.
 		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable"); fbErr != nil {
@@ -454,31 +485,14 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return info.Size, 0, nil
 	}
 
-	// Read stderr concurrently and close it to release the SSH session.
-	// stderr.Close() calls session.Wait()+session.Close() — the ONE AND ONLY
-	// session cleanup point for this SSH session. stdout is NEVER closed
-	// because stdout and stderr share the same *ssh.Session, and calling
-	// Wait() twice deadlocks (the Go SSH library's exitStatus channel is
-	// capacity-1, single-send). DO NOT add defer stdout.Close() here.
-	//
-	// 并发读取 stderr 并关闭它来释放 SSH session。
-	// stderr.Close() 会调用 session.Wait()+session.Close()——
-	// 这是本 SSH session 唯一的清理点。stdout 绝不 Close，因为 stdout 和
-	// stderr 共享同一个 *ssh.Session，调两次 Wait() 会死锁。
-	// 不要在这里加 defer stdout.Close()。
-	var errBuf strings.Builder
-	stderrDone := make(chan struct{})
-	go func() {
-		io.Copy(&errBuf, stderr)
-		stderr.Close()
-		close(stderrDone)
-	}()
-
-	// 接收远端签名
-	sig, err := delta.WireDecodeSignature(stdout)
+	// Receive remote signature from stdout.
+	// cmd.Close() drains stderr, waits for the remote process, and releases
+	// the SSH session — a single cleanup point for the entire command lifecycle.
+	// 从 stdout 接收远端签名。cmd.Close() 统一清理 stderr、等待远端进程、释放 SSH session。
+	sig, err := delta.WireDecodeSignature(cmd.Stdout)
 	if err != nil {
-		stdin.Close()
-		<-stderrDone
+		cmd.Stdin.Close()
+		cmd.Close()
 		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed"); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
@@ -488,8 +502,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	// Open local file for streaming (no mmap, no full read into memory).
 	f, err := os.Open(info.Path)
 	if err != nil {
-		stdin.Close()
-		<-stderrDone
+		cmd.Stdin.Close()
+		cmd.Close()
 		return 0, 0, fmt.Errorf("open local: %w", err)
 	}
 	defer f.Close()
@@ -502,7 +516,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 
 	// Wrap stdin to count actual wire bytes (includes match instruction
 	// headers, not just literal payload).
-	wc := &writeCounter{w: stdin}
+	wc := &writeCounter{w: cmd.Stdin}
 
 	const batchSize = 256
 	batch := make([]delta.MatchResult, 0, batchSize)
@@ -536,8 +550,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return nil
 	})
 	if err != nil {
-		stdin.Close()
-		<-stderrDone
+		cmd.Stdin.Close()
+		cmd.Close()
 		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
@@ -545,8 +559,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	}
 	// Flush remaining batch.
 	if err := flushBatch(); err != nil {
-		stdin.Close()
-		<-stderrDone
+		cmd.Stdin.Close()
+		cmd.Close()
 		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
@@ -554,8 +568,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	}
 	// End-of-stream marker: count=0 tells receiver we're done.
 	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
-		stdin.Close()
-		<-stderrDone
+		cmd.Stdin.Close()
+		cmd.Close()
 		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
@@ -563,12 +577,15 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	}
 
 	// Instructions already streamed to remote via the callback above.
-	// Close stdin to signal remote to start reconstruction.
-	stdin.Close()
-	<-stderrDone
+	// Close stdin to signal remote to start reconstruction, then Close()
+	// drains stderr, waits for the remote process, and releases the session.
+	cmd.Stdin.Close()
+	if closeErr := cmd.Close(); closeErr != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", closeErr)
+	}
 
-	if errBuf.Len() > 0 {
-		errStr := strings.TrimSpace(errBuf.String())
+	if stderrOut := cmd.Stderr(); stderrOut != "" {
+		errStr := strings.TrimSpace(stderrOut)
 		// Only fall back on actual errors, not non-fatal warnings (e.g. cache save).
 		// 仅对真正的错误做 fallback，忽略非致命警告（如缓存保存失败）。
 		if strings.Contains(errStr, "RECEIVER ERROR:") {

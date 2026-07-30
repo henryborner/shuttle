@@ -23,7 +23,14 @@ func FormatBytes(b int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+	// "KMGTPEZY" covers up to YiB; exp is clamped to avoid index panic.
+	// int64 max ≈ 8 EiB, well within range, but the guard protects against
+	// future type changes (e.g. uint64).
+	const prefixes = "KMGTPEZY"
+	if exp >= len(prefixes) {
+		exp = len(prefixes) - 1
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), prefixes[exp])
 }
 
 // Pad pads s to width with trailing spaces (right-aligned would be different).

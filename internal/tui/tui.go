@@ -24,9 +24,10 @@ type startSyncMsg struct {
 
 // deletePreviewMsg carries orphan file list from remote scan
 type deletePreviewMsg struct {
-	taskName string
-	files    []string // orphan files on remote / 远端多余文件列表
-	err      string
+	taskName    string
+	orphanFiles []transport.FileInfo // orphan files / 孤立文件
+	emptyDirs   []transport.FileInfo // empty dir candidates / 空目录候选
+	err         string
 }
 
 // syncMsg carries sync progress updates
@@ -60,9 +61,11 @@ const (
 )
 
 type deleteConfirmState struct {
-	task  config.Task
-	stage deleteConfirmStage
-	files []string // 远端多余文件列表
+	task        config.Task
+	stage       deleteConfirmStage
+	orphanFiles []transport.FileInfo // 远端多余文件列表
+	emptyDirs   []transport.FileInfo // 空目录候选
+	totalCount  int                  // orphanFiles + emptyDirs
 }
 
 // syncProgress tracks current sync state for rendering
@@ -182,8 +185,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.syncErr = pm.err
 					return m, nil
 				}
-				dc.files = pm.files
-				if len(dc.files) == 0 {
+				dc.orphanFiles = pm.orphanFiles
+				dc.emptyDirs = pm.emptyDirs
+				dc.totalCount = len(pm.orphanFiles) + len(pm.emptyDirs)
+				if dc.totalCount == 0 {
 					// 没有多余文件，直接同步
 					m.deleteConfirm = nil
 					m.startSync(dc.task)
@@ -372,18 +377,33 @@ func (m *Model) View() string {
 			return StyleBorder.Width(m.width - 4).Height(m.height - 2).Render(body)
 		case confirmLevel2:
 			var list string
+			total := dc.totalCount
 			maxShow := 20
-			for i, f := range dc.files {
-				if i >= maxShow {
+			shown := 0
+			// Show orphan files first
+			for _, f := range dc.orphanFiles {
+				if shown >= maxShow {
 					list += fmt.Sprintf("  ... %s %d %s\n",
-						StyleMuted.Render("+"), len(dc.files)-maxShow, StyleMuted.Render("more"))
+						StyleMuted.Render("+"), total-shown, StyleMuted.Render("more"))
+					shown = total
 					break
 				}
-				list += "  " + StyleDanger.Render("✗ "+f) + "\n"
+				list += "  " + StyleDanger.Render("✗ "+f.Path) + "\n"
+				shown++
+			}
+			// Then empty directories (with / suffix)
+			for _, d := range dc.emptyDirs {
+				if shown >= maxShow {
+					list += fmt.Sprintf("  ... %s %d %s\n",
+						StyleMuted.Render("+"), total-shown, StyleMuted.Render("more"))
+					break
+				}
+				list += "  " + StyleDanger.Render("✗ "+d.Path+"/") + "\n"
+				shown++
 			}
 			body := fmt.Sprintf("  %s\n\n  %s\n\n%s\n  %s\n\n  [Y] %s  [N] %s",
 				StyleTitle.Render("⚠ "+i18n.T("sync.delete_warn")),
-				fmt.Sprintf(i18n.T("sync.delete_list"), len(dc.files)),
+				fmt.Sprintf(i18n.T("sync.delete_list"), total),
 				list,
 				StyleMuted.Render(i18n.T("sync.delete_confirm")),
 				StyleSuccess.Render(i18n.T("btn.yes")),
@@ -392,7 +412,7 @@ func (m *Model) View() string {
 		case confirmLevel3:
 			body := fmt.Sprintf("  %s\n\n  %s\n\n  %s\n\n  [Y] %s  [N] %s",
 				StyleTitle.Render("🚨 "+i18n.T("sync.delete_final")),
-				fmt.Sprintf(i18n.T("sync.delete_list"), len(dc.files)),
+				fmt.Sprintf(i18n.T("sync.delete_list"), dc.totalCount),
 				StyleWarning.Render(i18n.T("sync.delete_confirm")),
 				StyleSuccess.Render(i18n.T("sync.delete_yes")),
 				StyleMuted.Render(i18n.T("btn.cancel")))
@@ -647,8 +667,8 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 		}
 		defer sftp.Close()
 
-		// 扫描本地文件（简化版 scanLocalFiles）
-		localFiles, err := scanLocal(task.Source, task.Options.Exclude, !task.Options.ShowDots)
+		// 扫描本地文件
+		localFiles, err := transport.ScanLocalFiles(task.Source, task.Options.Exclude, !task.Options.ShowDots)
 		if err != nil {
 			return deletePreviewMsg{taskName: task.Name, err: fmt.Sprintf("scan local: %v", err)}
 		}
@@ -656,62 +676,31 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 			return deletePreviewMsg{taskName: task.Name} // 无本地文件，无需删除
 		}
 
-		// 构建 remote 目录和文件映射
-		remoteDirs := make(map[string]bool)
-		for _, lf := range localFiles {
-			rp, _ := filepath.Rel(task.Source, lf)
-			if rp == "." || rp == "" {
-				rp = filepath.Base(task.Source)
-			} else if info, err := os.Stat(task.Source); err == nil && info.IsDir() && !task.Options.Flat {
-				rp = filepath.Join(filepath.Base(task.Source), rp)
-			}
-			remoteFile := filepath.ToSlash(filepath.Join(remotePath, rp))
-			remoteDirs[filepath.ToSlash(filepath.Dir(remoteFile))] = true
-		}
-
+		// 扫描远端文件
 		remoteFiles := make(map[string]transport.FileInfo)
-		for dir := range remoteDirs {
-			entries, err := sftp.ListDirRecursive(dir)
-			if err != nil {
-				continue
-			}
-			for _, f := range entries {
-				key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
-				key = strings.TrimPrefix(key, "/")
-				remoteFiles[key] = f
-			}
+		entries, listErr := sftp.ListDirRecursive(remotePath)
+		for _, f := range entries {
+			key := filepath.ToSlash(strings.TrimPrefix(f.Path, remotePath))
+			key = strings.TrimLeft(key, "/")
+			remoteFiles[key] = f
+		}
+		if listErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] Remote listing incomplete on %s: %v\n", remotePath, listErr)
 		}
 
-		// 收集孤儿文件（远端有但本地没有）
-		var orphans []string
-		for name := range remoteFiles {
-			found := false
-			for _, lf := range localFiles {
-				rp, _ := filepath.Rel(task.Source, lf)
-				if rp == "." || rp == "" {
-					rp = filepath.Base(task.Source)
-				} else if info, err := os.Stat(task.Source); err == nil && info.IsDir() && !task.Options.Flat {
-					rp = filepath.Join(filepath.Base(task.Source), rp)
-				}
-				if filepath.ToSlash(rp) == name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				// 保护过滤：受保护的文件不列入删除清单
-				rf := remoteFiles[name]
-				if transport.MatchProtect(rf.Path, srv.Protect) {
-					continue
-				}
-				orphans = append(orphans, name)
-			}
+		// 复用 sync 引擎的分类逻辑
+		inv := transport.BuildLocalInventory(task.Source, localFiles, task.Options.Flat)
+		orphanFiles, emptyDirs := transport.ClassifyOrphans(remoteFiles, inv, srv.Protect)
+
+		// 优先列出高危文件
+		sortOrphans(orphanFiles)
+		sortOrphans(emptyDirs)
+
+		return deletePreviewMsg{
+			taskName:    task.Name,
+			orphanFiles: orphanFiles,
+			emptyDirs:   emptyDirs,
 		}
-
-		// 优先列出高危文件（数据库、证书、配置等）
-		sortOrphans(orphans)
-
-		return deletePreviewMsg{taskName: task.Name, files: orphans}
 	}
 }
 
@@ -740,11 +729,11 @@ var highRiskExts = []string{
 
 // sortOrphans moves high-risk files (databases, keys, configs) to the top of the list.
 // sortOrphans 把高危文件（数据库/密钥/配置）排到列表最前面。
-func sortOrphans(files []string) {
+func sortOrphans(files []transport.FileInfo) {
 	// 简单冒泡：高危文件沉到前面
-	high := func(name string) int {
-		ext := strings.ToLower(filepath.Ext(name))
-		base := strings.ToLower(filepath.Base(name))
+	high := func(f transport.FileInfo) int {
+		ext := strings.ToLower(filepath.Ext(f.Path))
+		base := strings.ToLower(filepath.Base(f.Path))
 		for _, h := range highRiskExts {
 			if ext == h || base == h[1:] { // h[1:] 去掉 . 匹配无扩展名文件
 				return 1

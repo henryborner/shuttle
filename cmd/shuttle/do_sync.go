@@ -26,27 +26,27 @@ var highRiskDryExts = map[string]string{
 	".service": "systemd unit", ".timer": "systemd unit",
 }
 
-// dryRunHook lists each file's operation in dry-run mode.
-// dryRunHook 在 dry-run 模式下列出每个文件的操作。
-type dryRunHook struct {
+// consoleHook prints formatted sync progress to stdout.
+// consoleHook 格式化输出同步进度到标准输出。
+type consoleHook struct {
 	mu           sync.Mutex
 	deletedFiles []string
 	hasProgress  bool // whether a progress bar was displayed / 是否显示过进度条
 }
 
-func (h *dryRunHook) OnSyncStart(name string, total int) error {
+func (h *consoleHook) OnSyncStart(name string, total int) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	fmt.Printf("  %d files to check...\n", total)
 	return nil
 }
-func (h *dryRunHook) OnFileStart(path string, size int64) error {
+func (h *consoleHook) OnFileStart(path string, size int64) error {
 	h.mu.Lock()
 	h.hasProgress = false
 	h.mu.Unlock()
 	return nil
 }
-func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
+func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
 	if total <= 0 {
 		return
 	}
@@ -67,7 +67,7 @@ func (h *dryRunHook) OnFileProgress(path string, sent, total int64) {
 		util.Pad(filepath.Base(path), 24), bar, pct,
 		util.FormatBytes(sent), util.FormatBytes(total))
 }
-func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
+func (h *consoleHook) OnFileDone(evt transport.FileEvent) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	// Clear the progress bar line (80 cols covers the max ~77-char bar).
@@ -94,7 +94,7 @@ func (h *dryRunHook) OnFileDone(evt transport.FileEvent) error {
 	return nil
 }
 
-func (h *dryRunHook) OnSyncDone(stats *transport.SyncStats) error {
+func (h *consoleHook) OnSyncDone(stats *transport.SyncStats) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	// summary
@@ -270,7 +270,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 
 			// 同步
 			engine := transport.NewSyncEngine(sftp)
-			engine.SetHook(&dryRunHook{})
+			engine.SetHook(&consoleHook{})
 			stats, err := engine.Sync(transport.SyncOptions{
 				Source:   task.Source,
 				Target:   remotePath,
@@ -423,7 +423,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	}
 
 	engine := transport.NewSyncEngine(sftp)
-	engine.SetHook(&dryRunHook{})
+	engine.SetHook(&consoleHook{})
 	stats, err := engine.Sync(transport.SyncOptions{
 		Source:   source,
 		Target:   remotePath,
