@@ -43,6 +43,7 @@ type SyncStats struct {
 	SentBytes      int64
 	DeltaSaved     int64 // bytes matched via delta (not transmitted)
 	Errors         []error
+	Warnings       []string // non-fatal warnings collected during sync
 }
 
 // SyncEngine executes file sync between local and remote using the rsync delta algorithm.
@@ -50,6 +51,7 @@ type SyncStats struct {
 type SyncEngine struct {
 	transport Transport
 	hook      SyncHook
+	warnings  []string // accumulated during Sync(), flushed to stats.Warnings
 }
 
 // NewSyncEngine creates a sync engine backed by the given transport.
@@ -62,10 +64,19 @@ func NewSyncEngine(tr Transport) *SyncEngine {
 // SetHook 注册同步事件钩子，用于进度报告。
 func (e *SyncEngine) SetHook(h SyncHook) { e.hook = h }
 
+// warn writes a warning to stderr and collects it for SyncStats.
+// warn 将警告写入 stderr 并收集到 SyncStats。
+func (e *SyncEngine) warn(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "%s\n", msg)
+	e.warnings = append(e.warnings, msg)
+}
+
 // Sync executes the sync operation.
 // Sync 执行同步。
 func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	stats := &SyncStats{}
+	e.warnings = nil
 	localFiles, err := ScanLocalFiles(opts.Source, opts.Exclude, !opts.ShowDots)
 	if err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
@@ -98,8 +109,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		if listErr != nil {
 			// Listing was truncated or had errors — remote view is incomplete.
 			// Sync proceeds safely (no deletions for invisible files).
-			fmt.Fprintf(os.Stderr, "  [WARN] Remote listing incomplete on %s: %v\n", opts.Target, listErr)
-			fmt.Fprintf(os.Stderr, "    Delete pass skipped for unscanned directories.\n")
+			e.warn("  [WARN] Remote listing incomplete on %s: %v\n    Delete pass skipped for unscanned directories.", opts.Target, listErr)
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
@@ -328,6 +338,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 	}
 
+	stats.Warnings = append(stats.Warnings, e.warnings...)
 	e.hook.OnSyncDone(stats)
 	return stats, nil
 }
@@ -583,7 +594,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	// drains stderr, waits for the remote process, and releases the session.
 	cmd.Stdin.Close()
 	if closeErr := cmd.Close(); closeErr != nil {
-		fmt.Fprintf(os.Stderr, "  [WARN] Remote command exit error: %v\n", closeErr)
+		e.warn("  [WARN] Remote command exit error: %v", closeErr)
 	}
 
 	if stderrOut := cmd.Stderr(); stderrOut != "" {
@@ -598,11 +609,11 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		}
 		// Non-fatal stderr — delta succeeded, just log it.
 		// 非致命 stderr — delta 成功，仅记录。
-		fmt.Fprintf(os.Stderr, "delta: remote stderr for %s: %s\n", filepath.Base(info.Path), errStr)
+		e.warn("delta: remote stderr for %s: %s", filepath.Base(info.Path), errStr)
 	}
 
 	if err := e.transport.SetModTime(remotePath, info.ModTime); err != nil {
-		fmt.Fprintf(os.Stderr, "delta: set mtime for %s: %v\n", filepath.Base(info.Path), err)
+		e.warn("delta: set mtime for %s: %v", filepath.Base(info.Path), err)
 	}
 
 	savedBytes = info.Size - eng.LiteralBytes
@@ -616,7 +627,7 @@ func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason strin
 	if err := e.uploadFile(info, remotePath); err != nil {
 		return fmt.Errorf("delta fallback upload failed: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "delta: %s (fell back to full upload for %s)\n", reason, filepath.Base(info.Path))
+	e.warn("delta: %s (fell back to full upload for %s)", reason, filepath.Base(info.Path))
 	return nil
 }
 

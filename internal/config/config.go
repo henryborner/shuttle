@@ -54,6 +54,7 @@ type Config struct {
 
 // DefaultWorkers is the default number of parallel delta workers.
 const DefaultWorkers = 4
+
 // MaxWorkers is the upper bound to avoid overwhelming the remote server.
 const MaxWorkers = 8
 
