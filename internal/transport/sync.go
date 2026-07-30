@@ -46,6 +46,22 @@ type SyncStats struct {
 	Warnings       []string // non-fatal warnings collected during sync
 }
 
+// deltaJob represents a file that needs delta transfer.
+type deltaJob struct {
+	lf         LocalFileInfo
+	relPath    string
+	remotePath string
+}
+
+// deltaResult is the outcome of a single delta transfer.
+type deltaResult struct {
+	job   deltaJob
+	sent  int64
+	saved int64
+	start time.Time
+	err   error
+}
+
 // SyncEngine executes file sync between local and remote using the rsync delta algorithm.
 // SyncEngine 基于 rsync delta 算法执行本地到远端的文件同步。
 type SyncEngine struct {
@@ -83,21 +99,14 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	}
 
 	// Safety guard: empty source + delete=true would wipe the entire remote.
-	// This is especially dangerous with skipDots=true (default), which hides
-	// dot-files — the source may appear empty but actually contain .git/, .env, etc.
-	// 安全守卫：空 source + delete=true 会擦除整个远端。
 	if len(localFiles) == 0 && opts.Delete && !opts.DryRun {
 		return nil, fmt.Errorf("safety: source contains no files and delete is enabled — refusing to wipe remote target; set delete:false or ensure source is not empty (check skipDots/exclude settings)")
 	}
 
+	// Full recursive scan only needed for --delete (to find orphan files).
+	// Without --delete, we Stat each remote file on demand — much faster.
 	remoteFiles := make(map[string]FileInfo)
 	remoteScanned := false
-
-	// Full recursive scan is only needed for --delete (to find orphan files).
-	// Without --delete, we Stat each remote file on demand — much faster for
-	// large directories like /tmp/.
-	// 全量递归扫描仅 --delete 需要（发现远端孤儿文件）。
-	// 不用 delete 时按需 Stat 每个远端文件，对大目录（如 /tmp/）快得多。
 	if opts.Delete {
 		entries, listErr := e.transport.ListDirRecursive(opts.Target)
 		for _, f := range entries {
@@ -107,38 +116,44 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		}
 		remoteScanned = true
 		if listErr != nil {
-			// Listing was truncated or had errors — remote view is incomplete.
-			// Sync proceeds safely (no deletions for invisible files).
 			e.warn("  [WARN] Remote listing incomplete on %s: %v\n    Delete pass skipped for unscanned directories.", opts.Target, listErr)
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
 
-	// First pass: new files (serial, shared SFTP connection)
-	// Collect files that need delta at the same time.
-	// 第一遍：新文件（串行，共用 SFTP 连接）。
-	// 同时收集需要 delta 的文件。
-	type deltaJob struct {
-		lf         LocalFileInfo
-		relPath    string
-		remotePath string
-	}
-	var deltaJobs []deltaJob
+	// Upload new files + collect delta jobs.
+	deltaJobs := e.uploadPhase(localFiles, remoteFiles, remoteScanned, opts, stats)
 
+	// Parallel delta transfers.
+	e.deltaPhase(deltaJobs, opts, stats)
+
+	// Delete orphan files + clean empty dirs.
+	if opts.Delete {
+		e.deletePhase(remoteFiles, localFiles, opts, stats)
+	}
+
+	stats.Warnings = append(stats.Warnings, e.warnings...)
+	e.hook.OnSyncDone(stats)
+	return stats, nil
+}
+
+// uploadPhase uploads new files and collects delta jobs for existing files.
+// uploadPhase 上传新文件并收集已有文件的 delta 任务。
+func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[string]FileInfo,
+	remoteScanned bool, opts SyncOptions, stats *SyncStats) []deltaJob {
+
+	var deltaJobs []deltaJob
 	for _, lf := range localFiles {
 		relPath := resolveRelPath(opts.Source, lf.Path, opts.Flat)
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
 		rf, exists := remoteFiles[filepath.ToSlash(relPath)]
 		if !exists && !remoteScanned {
-			// No full scan done — Stat just this file on remote
 			if fi, statErr := e.transport.Stat(remotePath); statErr == nil {
 				rf = fi
 				exists = true
 			}
 		}
 
-		// protect check: remote exists and matches protect pattern → skip
-		// 保护检查：远端已有且匹配 protect 模式 → 禁止覆盖
 		if exists && MatchProtect(remotePath, opts.Protect) {
 			stats.ProtectedFiles++
 			stats.TotalFiles++
@@ -171,11 +186,8 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 			}
 		} else {
 			needUpd := lf.Size != rf.Size || !lf.ModTime.Truncate(time.Second).Equal(rf.ModTime.Truncate(time.Second))
-			// checksum mode: still do delta content verification when size+mtime match (read-only remote)
-			// checksum 模式：size+mtime 对上时仍进 delta 做内容校验（远端只读不写）
 			if needUpd || opts.Checksum {
 				if opts.NoDelta && !opts.DryRun {
-					// No delta — upload whole file directly
 					fe := e.uploadFile(lf, remotePath)
 					stats.UpdatedFiles++
 					stats.SentBytes += lf.Size
@@ -202,73 +214,16 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		stats.TotalFiles++
 		stats.TotalBytes += lf.Size
 	}
+	return deltaJobs
+}
 
-	// Second pass: delta transfers (parallel worker pool, real-time callbacks)
-	// 第二遍：delta 传输（并行 worker pool，实时回调防 TUI 卡顿）
-	if len(deltaJobs) > 0 && !opts.DryRun {
-		workers := opts.Workers
-		if workers <= 0 {
-			workers = config.DefaultWorkers
-		}
-		sem := make(chan struct{}, workers)
-		resultCh := make(chan struct {
-			job   deltaJob
-			sent  int64
-			saved int64
-			start time.Time
-			err   error
-		}, len(deltaJobs))
-
-		checksum := opts.Checksum
-		for _, dj := range deltaJobs {
-			go func(job deltaJob) {
-				sem <- struct{}{}
-				defer func() {
-					if r := recover(); r != nil {
-						resultCh <- struct {
-							job   deltaJob
-							sent  int64
-							saved int64
-							start time.Time
-							err   error
-						}{job, 0, 0, time.Now(), fmt.Errorf("delta panic: %v", r)}
-					}
-					<-sem
-				}()
-				start := time.Now()
-				e.hook.OnFileStart(job.relPath, job.lf.Size)
-				sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
-				resultCh <- struct {
-					job   deltaJob
-					sent  int64
-					saved int64
-					start time.Time
-					err   error
-				}{job, sent, saved, start, fe}
-			}(dj)
-		}
-
-		for range deltaJobs {
-			r := <-resultCh
-			stats.UpdatedFiles++
-			stats.DeltaBytes += r.job.lf.Size
-			stats.SentBytes += r.sent
-			stats.DeltaSaved += r.saved
-			if r.saved > 0 {
-				stats.DeltaFiles++
-			}
-			e.hook.OnFileDone(FileEvent{
-				RelPath: r.job.relPath, RemotePath: r.job.remotePath,
-				FileSize: r.job.lf.Size, BytesSent: r.sent,
-				IsUpdated: true, IsDelta: r.saved > 0, DeltaSaved: r.saved,
-				StartTime: r.start, Duration: time.Since(r.start),
-				Error: r.err,
-			})
-			if r.err != nil {
-				stats.Errors = append(stats.Errors, r.err)
-			}
-		}
-	} else if len(deltaJobs) > 0 {
+// deltaPhase executes delta transfers in parallel using a worker pool.
+// deltaPhase 使用 worker pool 并行执行 delta 传输。
+func (e *SyncEngine) deltaPhase(deltaJobs []deltaJob, opts SyncOptions, stats *SyncStats) {
+	if len(deltaJobs) == 0 {
+		return
+	}
+	if opts.DryRun {
 		stats.UpdatedFiles += len(deltaJobs)
 		for _, dj := range deltaJobs {
 			e.hook.OnFileDone(FileEvent{
@@ -276,71 +231,116 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 				FileSize: dj.lf.Size, IsUpdated: true,
 			})
 		}
+		return
 	}
 
-	if opts.Delete {
-		localInventory := BuildLocalInventory(opts.Source, localFiles, opts.Flat)
-		orphanFiles, emptyDirs := ClassifyOrphans(remoteFiles, localInventory, opts.Protect)
+	workers := opts.Workers
+	if workers <= 0 {
+		workers = config.DefaultWorkers
+	}
+	sem := make(chan struct{}, workers)
+	resultCh := make(chan deltaResult, len(deltaJobs))
 
-		// Report protected entries (classified by ClassifyOrphans as "not in results
-		// but kept alive"). We need to iterate once more to find them for the hook.
-		for name, rf := range remoteFiles {
-			if localInventory[name] {
-				continue
-			}
-			if MatchProtect(rf.Path, opts.Protect) {
-				stats.ProtectedFiles++
-				e.hook.OnFileDone(FileEvent{
-					RelPath: name, RemotePath: rf.Path,
-					FileSize: rf.Size, IsProtected: true,
-				})
-			}
-		}
-
-		// Delete orphan files.
-		for _, rf := range orphanFiles {
-			if !opts.DryRun {
-				if err := e.transport.Remove(rf.Path); err != nil {
-					if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
-						// File truly doesn't exist — desired state achieved
-					} else {
-						stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
-						continue
-					}
+	checksum := opts.Checksum
+	for _, dj := range deltaJobs {
+		go func(job deltaJob) {
+			sem <- struct{}{}
+			defer func() {
+				if r := recover(); r != nil {
+					resultCh <- deltaResult{job, 0, 0, time.Now(), fmt.Errorf("delta panic: %v", r)}
 				}
-			}
-			stats.DeletedFiles++
-			relName := filepath.ToSlash(strings.TrimPrefix(rf.Path, opts.Target))
-			relName = strings.TrimPrefix(relName, "/")
+				<-sem
+			}()
+			start := time.Now()
+			e.hook.OnFileStart(job.relPath, job.lf.Size)
+			sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
+			resultCh <- deltaResult{job, sent, saved, start, fe}
+		}(dj)
+	}
+
+	for range deltaJobs {
+		r := <-resultCh
+		stats.UpdatedFiles++
+		stats.DeltaBytes += r.job.lf.Size
+		stats.SentBytes += r.sent
+		stats.DeltaSaved += r.saved
+		if r.saved > 0 {
+			stats.DeltaFiles++
+		}
+		e.hook.OnFileDone(FileEvent{
+			RelPath: r.job.relPath, RemotePath: r.job.remotePath,
+			FileSize: r.job.lf.Size, BytesSent: r.sent,
+			IsUpdated: true, IsDelta: r.saved > 0, DeltaSaved: r.saved,
+			StartTime: r.start, Duration: time.Since(r.start),
+			Error: r.err,
+		})
+		if r.err != nil {
+			stats.Errors = append(stats.Errors, r.err)
+		}
+	}
+}
+
+// deletePhase removes orphan files and cleans up empty directories.
+// deletePhase 删除孤立文件并清理空目录。
+func (e *SyncEngine) deletePhase(remoteFiles map[string]FileInfo, localFiles []LocalFileInfo,
+	opts SyncOptions, stats *SyncStats) {
+
+	localInventory := BuildLocalInventory(opts.Source, localFiles, opts.Flat)
+	orphanFiles, emptyDirs := ClassifyOrphans(remoteFiles, localInventory, opts.Protect)
+
+	// Report protected entries.
+	for name, rf := range remoteFiles {
+		if localInventory[name] {
+			continue
+		}
+		if MatchProtect(rf.Path, opts.Protect) {
+			stats.ProtectedFiles++
 			e.hook.OnFileDone(FileEvent{
-				RelPath: relName, RemotePath: rf.Path,
-				FileSize: rf.Size, IsDeleted: true,
+				RelPath: name, RemotePath: rf.Path,
+				FileSize: rf.Size, IsProtected: true,
 			})
 		}
+	}
 
-		// Clean up empty directories (bottom-up by depth).
-		sort.Slice(emptyDirs, func(i, j int) bool {
-			return strings.Count(emptyDirs[i].Path, "/") > strings.Count(emptyDirs[j].Path, "/")
-		})
-		for _, d := range emptyDirs {
-			if !opts.DryRun {
-				if err := e.transport.RemoveDirectory(d.Path); err != nil {
+	// Delete orphan files.
+	for _, rf := range orphanFiles {
+		if !opts.DryRun {
+			if err := e.transport.Remove(rf.Path); err != nil {
+				if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
+					// File already gone — desired state achieved
+				} else {
+					stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
 					continue
 				}
 			}
-			stats.DeletedFiles++
-			relName := filepath.ToSlash(strings.TrimPrefix(d.Path, opts.Target))
-			relName = strings.TrimPrefix(relName, "/")
-			e.hook.OnFileDone(FileEvent{
-				RelPath: relName, RemotePath: d.Path,
-				FileSize: d.Size, IsDeleted: true,
-			})
 		}
+		stats.DeletedFiles++
+		relName := filepath.ToSlash(strings.TrimPrefix(rf.Path, opts.Target))
+		relName = strings.TrimPrefix(relName, "/")
+		e.hook.OnFileDone(FileEvent{
+			RelPath: relName, RemotePath: rf.Path,
+			FileSize: rf.Size, IsDeleted: true,
+		})
 	}
 
-	stats.Warnings = append(stats.Warnings, e.warnings...)
-	e.hook.OnSyncDone(stats)
-	return stats, nil
+	// Clean up empty directories (bottom-up by depth).
+	sort.Slice(emptyDirs, func(i, j int) bool {
+		return strings.Count(emptyDirs[i].Path, "/") > strings.Count(emptyDirs[j].Path, "/")
+	})
+	for _, d := range emptyDirs {
+		if !opts.DryRun {
+			if err := e.transport.RemoveDirectory(d.Path); err != nil {
+				continue
+			}
+		}
+		stats.DeletedFiles++
+		relName := filepath.ToSlash(strings.TrimPrefix(d.Path, opts.Target))
+		relName = strings.TrimPrefix(relName, "/")
+		e.hook.OnFileDone(FileEvent{
+			RelPath: relName, RemotePath: d.Path,
+			FileSize: d.Size, IsDeleted: true,
+		})
+	}
 }
 
 // BuildLocalInventory builds a set of slash-separated relative paths for all
