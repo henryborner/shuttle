@@ -19,22 +19,35 @@ func sshClient(t *testing.T) *ssh.Client {
 	if host == "" {
 		t.Skip("SHUTTLE_TEST_HOST not set")
 	}
+
+	user := os.Getenv("SHUTTLE_TEST_USER")
+	if user == "" {
+		user = "root"
+	}
+
+	port := os.Getenv("SHUTTLE_TEST_PORT")
+	if port == "" {
+		port = "22"
+	}
+
 	home, _ := os.UserHomeDir()
-	keyPath := filepath.Join(home, ".ssh", "id_ed25519")
+	keyPath := os.Getenv("SHUTTLE_TEST_KEY")
+	if keyPath == "" {
+		keyPath = filepath.Join(home, ".ssh", "id_ed25519")
+		if _, err := os.Stat(keyPath); err != nil {
+			keyPath = filepath.Join(home, ".ssh", "id_rsa")
+		}
+	}
 	key, err := os.ReadFile(keyPath)
 	if err != nil {
-		keyPath = filepath.Join(home, ".ssh", "id_rsa")
-		key, err = os.ReadFile(keyPath)
-		if err != nil {
-			t.Skipf("no SSH key: %v", err)
-		}
+		t.Skipf("no SSH key: %v", err)
 	}
 	signer, _ := ssh.ParsePrivateKey(key)
 	cfg := &ssh.ClientConfig{
-		User: "root", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	c, err := ssh.Dial("tcp", host+":22", cfg)
+	c, err := ssh.Dial("tcp", host+":"+port, cfg)
 	if err != nil {
 		t.Skipf("SSH: %v", err)
 	}
