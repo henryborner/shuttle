@@ -234,16 +234,6 @@ func parseReceiveCmd(cmd string) (sigOnly bool, fromFile string, remotePath stri
 	return
 }
 
-// extractRemotePath extracts the remote file path from a shuttle receive command.
-// Deprecated: use parseReceiveCmd for new two-phase commands.
-func extractRemotePath(cmd string) string {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Trim(parts[len(parts)-1], "'\"")
-}
-
 // =========================================================================
 // 测试
 // =========================================================================

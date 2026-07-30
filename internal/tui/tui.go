@@ -704,19 +704,6 @@ func (m *Model) startDeleteScan(task config.Task) tea.Cmd {
 	}
 }
 
-// scanLocal scans local files using the transport package logic.
-// scanLocal 扫描本地文件（复用 transport 包逻辑）。
-func scanLocal(root string, excludes []string, skipDots bool) ([]string, error) {
-	files, err := transport.ScanLocalFiles(root, excludes, skipDots)
-	if err != nil {
-		return nil, err
-	}
-	paths := make([]string, len(files))
-	for i, f := range files {
-		paths[i] = f.Path
-	}
-	return paths, nil
-}
 
 // highRiskExts 高危文件扩展名，优先显示在删除清单前部
 var highRiskExts = []string{
