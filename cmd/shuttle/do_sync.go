@@ -197,11 +197,11 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 	if workers <= 0 {
 		workers = cfg.Workers
 		if workers <= 0 {
-			workers = 4
+			workers = config.DefaultWorkers
 		}
 	}
-	if workers > 8 {
-		workers = 8
+	if workers > config.MaxWorkers {
+		workers = config.MaxWorkers
 	}
 
 	var tasks []config.Task
@@ -389,11 +389,11 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	if workers <= 0 {
 		workers = cfg.Workers
 		if workers <= 0 {
-			workers = 4
+			workers = config.DefaultWorkers
 		}
 	}
-	if workers > 8 {
-		workers = 8
+	if workers > config.MaxWorkers {
+		workers = config.MaxWorkers
 	}
 
 	if dryRun {

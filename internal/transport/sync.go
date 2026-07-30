@@ -11,6 +11,7 @@ import (
 	"time"
 
 	delta "github.com/henryborner/go-rsync"
+	"github.com/henryborner/shuttle/internal/config"
 )
 
 type SyncOptions struct {
@@ -197,7 +198,7 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 	if len(deltaJobs) > 0 && !opts.DryRun {
 		workers := opts.Workers
 		if workers <= 0 {
-			workers = 4 // default
+			workers = config.DefaultWorkers
 		}
 		sem := make(chan struct{}, workers)
 		resultCh := make(chan struct {

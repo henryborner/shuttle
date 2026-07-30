@@ -52,6 +52,11 @@ type Config struct {
 	Tasks    []Task   `yaml:"tasks"`
 }
 
+// DefaultWorkers is the default number of parallel delta workers.
+const DefaultWorkers = 4
+// MaxWorkers is the upper bound to avoid overwhelming the remote server.
+const MaxWorkers = 8
+
 // Load reads and parses a syncd.yaml config file.
 // Load 读取并解析 syncd.yaml 配置文件。
 func Load(path string) (*Config, error) {
