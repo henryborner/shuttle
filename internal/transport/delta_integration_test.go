@@ -169,7 +169,7 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 
 		// Reconstruct.
 		if !exists || len(oldData) == 0 {
-			recon := delta.NewReconstructor([]byte{}, 700, delta.GetDefault())
+			recon, _ := delta.NewReconstructor([]byte{}, 700, delta.GetDefault())
 			var result bytes.Buffer
 			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)
@@ -185,7 +185,7 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 			for i := range sig.BlockSums {
 				blockLens[i] = sig.BlockSums[i].Length
 			}
-			recon := delta.NewReconstructor(oldData, sig.BlockSize, delta.GetDefault(), blockLens)
+			recon, _ := delta.NewReconstructor(oldData, sig.BlockSize, delta.GetDefault(), blockLens)
 			var result bytes.Buffer
 			err := delta.DecodeInstructionsStreamAll(instReader, func(mr delta.MatchResult) error {
 				return recon.WriteInstruction(&result, mr)

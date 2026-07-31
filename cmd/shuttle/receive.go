@@ -135,7 +135,12 @@ func runReceive(cmd *cobra.Command, args []string) {
 		}
 	}
 	if sig == nil {
-		sig = delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
+		var gsrErr error
+		sig, gsrErr = delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
+		if gsrErr != nil {
+			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: generate signature failed: %v\n", gsrErr)
+			os.Exit(1)
+		}
 		var buf bytes.Buffer
 		if err := delta.WireEncodeSignature(&buf, sig); err != nil {
 			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: encode signature failed / 签名编码失败: %v\n", err)
@@ -199,7 +204,12 @@ func runReceive(cmd *cobra.Command, args []string) {
 	for i, bs := range sig.BlockSums {
 		blockLens[i] = bs.Length
 	}
-	recon := delta.NewReconstructor(oldData, blockSize, algo, blockLens)
+	recon, err := delta.NewReconstructor(oldData, blockSize, algo, blockLens)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: create reconstructor failed: %v\n", err)
+		cleanup()
+		os.Exit(1)
+	}
 
 	// Streaming pipeline: stdin → decode instructions → write output file.
 	// Supports batched streaming: sender may send multiple count-prefixed batches.

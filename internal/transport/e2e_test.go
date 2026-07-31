@@ -120,7 +120,7 @@ func doDelta(t *testing.T, client *ssh.Client, path string, newData []byte) (sen
 		t.Fatalf("sig: %v", err)
 	}
 
-	eng := delta.NewMatchEngine(sig.BlockSize, delta.GetDefault())
+	eng, _ := delta.NewMatchEngine(sig.BlockSize, delta.GetDefault())
 	eng.LoadSignature(sig)
 	insts := eng.Search(newData)
 
