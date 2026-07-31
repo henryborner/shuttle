@@ -633,6 +633,7 @@ tasks:
         - "*.tmp"
         - ".DS_Store"
       checksum: false        # false: 比大小+时间  true: 比文件内容哈希
+      # verify: true         # 传输后校验 SHA256（可选，默认关闭）
       flat: false            # true: 不套源文件夹名，直接映射内容
 
   # -- 示例2: 单文件同步（推送配置）--
@@ -643,6 +644,7 @@ tasks:
   #   target: myserver:/etc/nginx/nginx.conf
   #   options:
   #     checksum: true       # 单文件建议开启，精确判断是否需要更新
+  #     verify: true          # 传输后校验 SHA256
 `
 
 // runTUI launches the interactive terminal UI.
