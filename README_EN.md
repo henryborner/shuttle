@@ -80,6 +80,7 @@ tasks:
       delete: true          # delete extra remote files
       exclude: ["*.tmp", ".git/"]
       checksum: false       # true: detect changes by checksum; false: by mtime+size
+      verify: false         # true: verify SHA256 hash after transfer
       flat: false           # true: map content directly without source folder
       show_dots: false      # true: sync hidden files/dirs
 ```

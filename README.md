@@ -79,6 +79,7 @@ tasks:
       delete: true          # 删除远端多余文件
       exclude: ["*.tmp", ".git/"]
       checksum: false       # true: 用校验和对比; false: 用时间+大小
+      verify: false         # true: 传输后校验 SHA256（delta 零开销，全量需回读）
       flat: false           # true: 直接映射内容不套源文件夹名
       show_dots: false      # true: 同步隐藏文件 (.开头)
 ```

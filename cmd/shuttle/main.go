@@ -533,6 +533,9 @@ Options
   checksum   bool      Use strong checksums to detect file changes (default false)
                        false: compare by mtime + file size (fast, 1-second precision)
                        true:  compare by full strong checksum (accurate, slower)
+  verify     bool      Verify file integrity after transfer (default false)
+                       true: sender appends SHA256 trailer (delta) or re-reads
+                             remote file (full upload) to confirm byte-identical result.
   flat       bool      Flat mapping (default false, only meaningful for folder syncs)
                        false: source folder name appears in the target path.
                               E:\projects\dist\  →  /var/www/html/dist/...
@@ -575,6 +578,7 @@ Examples
       target: myserver:/etc/nginx/nginx.conf
       options:
         checksum: true
+        verify: true               # verify SHA256 after transfer
 
 Usage
 ------------------------
