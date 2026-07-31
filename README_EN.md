@@ -1,8 +1,8 @@
 [简体中文](README.md) | English
 
-# Shuttle — rsync-style delta sync for Windows
+# Shuttle — binary delta sync for Windows
 
-**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone rsync delta library). Only changed portions are transferred: a 100 MB file with 1 byte changed sends ~6 KB; identical files cost almost zero bandwidth. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
+**Shuttle** is a Windows-native file sync tool. Define mappings in `syncd.yaml` — one command to push. Powered by [go-rsync](https://github.com/henryborner/go-rsync) (standalone delta library). Only changed portions are transferred: a 100 MB file with 1 byte changed sends ~6 KB; identical files cost almost zero bandwidth. Not wire-compatible with standard rsync (uses CHAR_OFFSET=31, custom wire protocol).
 
 ```powershell
 shuttle                    # double-click to launch TUI
@@ -12,7 +12,7 @@ shuttle push web           # sync a task
 ## Features
 
 - **Config-driven** — Define mappings in `syncd.yaml`
-- **Delta transfer** — rsync algorithm, only signatures transferred for unchanged files
+- **Delta transfer** — delta algorithm, only signatures transferred for unchanged files
 - **Per-server protect** — Remote files never overwritten or deleted
 - **TUI** — Dashboard, mappings, servers, explorer, settings
 - **SFTP/SSH** — Local → remote with auto key detection
@@ -225,9 +225,9 @@ ssh user@host rm -f /usr/local/bin/shuttle ~/shuttle
 
 ## How It Works
 
-### Delta Transfer (rsync algorithm)
+### Delta Transfer
 
-Shuttle uses the rsync delta-transfer algorithm to minimize network traffic:
+Shuttle uses a delta-transfer algorithm to minimize network traffic:
 
 1. **Chunking** — The source file is split into dynamically-sized blocks (small files ~700B, large files auto-scaled, max 128KB)
 2. **Signatures** — Two checksums are computed per block: a fast rolling checksum (for quick matching) and a strong checksum (xxh64/xxh3/md5/sha256, for final verification)
@@ -281,7 +281,7 @@ cd shuttle
 ## Further Reading
 
 - [Remote Agent](docs/agent.md) — deployment, identity verification, search paths, signature cache
-- [Delta Algorithm](docs/delta.md) — rsync delta algorithm details, performance benchmarks
+- [Delta Algorithm](docs/delta.md) — delta algorithm details, performance benchmarks
 - [Security Design](docs/security.md) — host key TOFU, shell injection prevention, protect patterns
 
 ## License

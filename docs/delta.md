@@ -1,6 +1,6 @@
 # Delta Transfer
 
-> How shuttle uses the rsync algorithm to transfer only changed portions of files. Powered by [go-rsync](https://github.com/henryborner/go-rsync).
+> How shuttle uses a binary delta algorithm to transfer only changed portions of files. Powered by [go-rsync](https://github.com/henryborner/go-rsync).
 
 ## Contents
 
@@ -14,7 +14,7 @@
 
 ## 1. Overview
 
-Shuttle uses the rsync delta-transfer algorithm:
+Shuttle uses a binary delta-transfer algorithm:
 
 1. **Chunking** — Source file split into blocks (700B ~ 128KB, adaptive)
 2. **Signatures** — Rolling checksum (fast) + strong checksum (verification) per block

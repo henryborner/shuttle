@@ -39,7 +39,7 @@ var (
 		Short: "File sync over SSH with optional delta acceleration",
 		Long: `Shuttle syncs local directories to remote Linux servers over SSH.
 
-With the remote agent installed, shuttle uses the rsync delta algorithm:
+With the remote agent installed, shuttle uses a binary delta algorithm:
 only changed portions of files are sent across the network. Without the
 agent, shuttle falls back to full upload automatically -- everything still
 works, just without the bandwidth savings.

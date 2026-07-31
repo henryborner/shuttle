@@ -62,8 +62,8 @@ type deltaResult struct {
 	err   error
 }
 
-// SyncEngine executes file sync between local and remote using the rsync delta algorithm.
-// SyncEngine 基于 rsync delta 算法执行本地到远端的文件同步。
+// SyncEngine executes file sync between local and remote using a binary delta algorithm.
+// SyncEngine 基于二进制 delta 算法执行本地到远端的文件同步。
 type SyncEngine struct {
 	transport Transport
 	hook      SyncHook

@@ -2,7 +2,7 @@
 
 # Shuttle — Windows 原生增量文件同步工具
 
-**Shuttle** 是一个 Windows 原生的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库实现 rsync delta 算法——只传文件变化部分，100 MB 文件改动 1 字节仅传输约 6 KB，不改动时几乎零流量。与标准 rsync 线协议不兼容（使用 CHAR_OFFSET=31 的自有线协议）。
+**Shuttle** 是一个 Windows 原生的文件同步工具，通过 `syncd.yaml` 定义本地→远程映射，一键推送。基于 [go-rsync](https://github.com/henryborner/go-rsync) 库实现二进制 delta 算法——只传文件变化部分，100 MB 文件改动 1 字节仅传输约 6 KB，不改动时几乎零流量。使用自有线协议（CHAR_OFFSET=31），与标准 rsync 不兼容。
 
 ```powershell
 shuttle                    # 双击启动 TUI
@@ -12,7 +12,7 @@ shuttle push web           # 一键同步
 ## 功能
 
 - **配置文件驱动** — `syncd.yaml` 定义多组映射
-- **增量传输** — rsync 算法，文件未变化时仅传输校验签名，不传数据块
+- **增量传输** — delta 算法，文件未变化时仅传输校验签名，不传数据块
 - **服务器保护** — 按服务器配置保护模式，远端文件不被覆盖或删除
 - **TUI 界面** — 仪表盘、映射管理、服务器管理、文件浏览器、设置
 - **SFTP/SSH** — 本地 → 远程，自动检测密钥
@@ -236,9 +236,9 @@ ssh user@host rm -f /usr/local/bin/shuttle ~/shuttle
 
 ## 工作原理
 
-### 增量传输（rsync delta 算法）
+### 增量传输（delta 算法）
 
-Shuttle 使用 rsync 的 delta 传输算法来减少网络传输量：
+Shuttle 使用 delta 传输算法来减少网络传输量：
 
 1. **分块** — 将源文件按动态大小切分为数据块（小文件 ~700B，大文件自适应，上限 128KB）
 2. **签名** — 对每个块计算两个校验和：一个快速滚动校验和（用于快速匹配）和一个强校验和（xxh64/xxh3/md5/sha256，用于最终确认）
@@ -292,7 +292,7 @@ cd shuttle
 ## 延伸阅读
 
 - [Remote Agent](docs/agent.md) — agent 部署、身份验证、搜索路径、签名缓存
-- [Delta Algorithm](docs/delta.md) — rsync delta 传输算法详解、性能基准
+- [Delta Algorithm](docs/delta.md) — delta 传输算法详解、性能基准
 - [Security Design](docs/security.md) — 主机密钥 TOFU、Shell 注入防护、保护模式
 
 ## 许可证
