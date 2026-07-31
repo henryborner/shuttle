@@ -21,12 +21,12 @@ Write-Host "[1/3] Building embedded agents..." -ForegroundColor Cyan
 
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
-go build -ldflags="$ldflags" -o internal\agent\agents\linux_amd64 .\cmd\shuttle_agent\
+go build -trimpath -buildvcs=false -ldflags="$ldflags" -o internal\agent\agents\linux_amd64 .\cmd\shuttle_agent\
 Write-Host "  linux/amd64  $( '{0,6:N0} KB' -f ((Get-Item internal\agent\agents\linux_amd64).Length/1KB) )"
 
 $env:GOOS = "linux"
 $env:GOARCH = "arm64"
-go build -ldflags="$ldflags" -o internal\agent\agents\linux_arm64 .\cmd\shuttle_agent\
+go build -trimpath -buildvcs=false -ldflags="$ldflags" -o internal\agent\agents\linux_arm64 .\cmd\shuttle_agent\
 Write-Host "  linux/arm64  $( '{0,6:N0} KB' -f ((Get-Item internal\agent\agents\linux_arm64).Length/1KB) )"
 
 # ── Step 2: build shuttle.exe (Windows, embeds the agents above) ──
@@ -34,7 +34,7 @@ Write-Host "[2/3] Building shuttle.exe..." -ForegroundColor Cyan
 
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
-go build -ldflags="$ldflags" -o $outDir\shuttle.exe .\cmd\shuttle\
+go build -trimpath -buildvcs=false -ldflags="$ldflags" -o $outDir\shuttle.exe .\cmd\shuttle\
 Write-Host "  windows/amd64  $( '{0,6:N0} KB' -f ((Get-Item $outDir\shuttle.exe).Length/1KB) )"
 
 # ── Step 3: standalone agents (for manual deployment / legacy) ──
@@ -42,12 +42,12 @@ Write-Host "[3/3] Building standalone agents..." -ForegroundColor Cyan
 
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
-go build -ldflags="$ldflags" -o $outDir\shuttle_linux_amd64 .\cmd\shuttle_agent\
+go build -trimpath -buildvcs=false -ldflags="$ldflags" -o $outDir\shuttle_linux_amd64 .\cmd\shuttle_agent\
 Write-Host "  shuttle_linux_amd64  $( '{0,6:N0} KB' -f ((Get-Item $outDir\shuttle_linux_amd64).Length/1KB) )"
 
 $env:GOOS = "linux"
 $env:GOARCH = "arm64"
-go build -ldflags="$ldflags" -o $outDir\shuttle_linux_arm64 .\cmd\shuttle_agent\
+go build -trimpath -buildvcs=false -ldflags="$ldflags" -o $outDir\shuttle_linux_arm64 .\cmd\shuttle_agent\
 Write-Host "  shuttle_linux_arm64  $( '{0,6:N0} KB' -f ((Get-Item $outDir\shuttle_linux_arm64).Length/1KB) )"
 
 # ── Done (pre-UPX) ──
