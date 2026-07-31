@@ -53,6 +53,7 @@ type mappingsWizard struct {
 	inputBuf    string
 	optDelete   bool
 	optCheck    bool
+	optVerify   bool
 	optFlat     bool
 	optShowDots bool
 	isFile      bool
@@ -85,6 +86,7 @@ func (w *mappingsWizard) initForEdit(idx int) {
 	w.inputBuf = w.wipTask.Name
 	w.optDelete = w.wipTask.Options.Delete
 	w.optCheck = w.wipTask.Options.Checksum
+	w.optVerify = w.wipTask.Options.Verify
 	w.optFlat = w.wipTask.Options.Flat
 	w.optShowDots = w.wipTask.Options.ShowDots
 }
@@ -331,6 +333,8 @@ func (w *mappingsWizard) handleStepOptions(key string) {
 		w.optDelete = !w.optDelete
 	case "c":
 		w.optCheck = !w.optCheck
+	case "v":
+		w.optVerify = !w.optVerify
 	case "f":
 		w.optFlat = !w.optFlat
 	case "s":
@@ -338,6 +342,7 @@ func (w *mappingsWizard) handleStepOptions(key string) {
 	case "enter":
 		w.wipTask.Options.Delete = w.optDelete
 		w.wipTask.Options.Checksum = w.optCheck
+		w.wipTask.Options.Verify = w.optVerify
 		w.wipTask.Options.Flat = w.optFlat
 		w.wipTask.Options.ShowDots = w.optShowDots
 		if w.editIdx >= 0 && w.editIdx < len(w.cfg.Tasks) {
@@ -467,7 +472,11 @@ func (w *mappingsWizard) View(width, height int) string {
 		if w.optShowDots {
 			dotMark = StyleSuccess.Render(i18n.T("map.opt_show_dots_on"))
 		}
-		body = fmt.Sprintf("  [D] %s\n  [C] %s\n  [F] %s\n  [S] %s", delMark, chkMark, flatMark, dotMark)
+		verifyMark := i18n.T("map.opt_verify_off")
+		if w.optVerify {
+			verifyMark = StyleSuccess.Render(i18n.T("map.opt_verify_on"))
+		}
+		body = fmt.Sprintf("  [D] %s\n  [C] %s\n  [V] %s\n  [F] %s\n  [S] %s", delMark, chkMark, verifyMark, flatMark, dotMark)
 		hint = StyleMuted.Render(i18n.T("wiz.hint_opts") + i18n.T("btn.save") + "  Esc: " + i18n.T("btn.back"))
 	}
 

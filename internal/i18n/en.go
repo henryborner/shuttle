@@ -89,6 +89,8 @@ func init() {
 		"map.opt_flat_on":       "☑ Flat (no source folder wrapper)",
 		"map.opt_show_dots_off": "☐ Show dot files (.hidden)",
 		"map.opt_show_dots_on":  "☑ Show dot files (.hidden)",
+		"map.opt_verify_off":    "☐ Verify hash after transfer",
+		"map.opt_verify_on":     "☑ Verify hash after transfer",
 		// Wizard hints
 		"wiz.hint_name":   "  Enter: next  Esc: ",
 		"wiz.hint_source": "  Enter: next  Tab: browse  Esc: ",

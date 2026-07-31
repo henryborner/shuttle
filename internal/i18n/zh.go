@@ -89,6 +89,8 @@ func init() {
 		"map.opt_flat_on":       "☑ 扁平映射（不套源文件夹）",
 		"map.opt_show_dots_off": "☐ 显示隐藏文件（.开头）",
 		"map.opt_show_dots_on":  "☑ 显示隐藏文件（.开头）",
+		"map.opt_verify_off":    "☐ 传输后校验哈希",
+		"map.opt_verify_on":     "☑ 传输后校验哈希",
 
 		// Wizard hints
 		"wiz.hint_name":   "  Enter: 下一步  Esc: ",
