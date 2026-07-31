@@ -184,12 +184,43 @@ func runReceive() {
 		os.Exit(1)
 	}
 
+	// 5.5. Optional verify: sender may send a SHA256 trailer after EOS.
+	var expectedHash *[32]byte
+	{
+		flag := make([]byte, 1)
+		if n, _ := io.ReadFull(os.Stdin, flag); n == 1 && flag[0] == 0x01 {
+			var h [32]byte
+			if _, err := io.ReadFull(os.Stdin, h[:]); err != nil {
+				fmt.Fprintf(os.Stderr, "RECEIVER ERROR: read verify hash failed: %v\n", err)
+				cleanup()
+				os.Exit(1)
+			}
+			expectedHash = &h
+		}
+	}
+
 	// 6. Close output file, atomic rename.
 	if err := out.Close(); err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 关闭临时文件失败: %v\n", err)
 		cleanup()
 		os.Exit(1)
 	}
+
+	if expectedHash != nil {
+		data, err := os.ReadFile(tmpPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 校验读取临时文件失败: %v\n", err)
+			cleanup()
+			os.Exit(1)
+		}
+		actual := sha256.Sum256(data)
+		if actual != *expectedHash {
+			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: verify failed — reconstructed file hash mismatch\n")
+			cleanup()
+			os.Exit(1)
+		}
+	}
+
 	if err := os.Rename(tmpPath, filePath); err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 替换文件失败: %v\n", err)
 		cleanup()

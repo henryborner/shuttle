@@ -25,6 +25,7 @@ type Options struct {
 	Delete   bool     `yaml:"delete"`    // delete extra files on target / 删除目标多余文件
 	Exclude  []string `yaml:"exclude"`   // exclude file patterns / 排除文件模式
 	Checksum bool     `yaml:"checksum"`  // use checksum to detect changes / 用校验和判断差异
+	Verify   bool     `yaml:"verify"`    // verify full-file hash after transfer / 传输后校验全文件哈希
 	Flat     bool     `yaml:"flat"`      // map content directly, no source folder wrapping / 直接映射不套源文件夹
 	ShowDots bool     `yaml:"show_dots"` // show hidden files/dirs (starting with .) / 显示.开头的隐藏文件
 }

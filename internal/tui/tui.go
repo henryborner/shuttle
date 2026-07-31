@@ -590,7 +590,7 @@ func (m *Model) startSync(task config.Task) {
 			Source: task.Source, Target: remotePath,
 			Delete: task.Options.Delete, Exclude: task.Options.Exclude,
 			Protect:  srv.Protect,
-			Checksum: task.Options.Checksum, ShowDots: task.Options.ShowDots,
+			Checksum: task.Options.Checksum, Verify: task.Options.Verify, ShowDots: task.Options.ShowDots,
 			Workers: m.cfg.Workers, Flat: task.Options.Flat,
 		})
 

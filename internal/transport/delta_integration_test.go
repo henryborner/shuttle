@@ -272,7 +272,7 @@ func TestUploadFileDelta_MockTransport(t *testing.T) {
 	eng := NewSyncEngine(mock)
 	info := LocalFileInfo{Path: localPath, Size: int64(len(localData)), ModTime: time.Now()}
 
-	sent, saved, err := eng.uploadFileDelta(info, remotePath, false)
+	sent, saved, err := eng.uploadFileDelta(info, remotePath, false, false)
 	if err != nil {
 		t.Fatalf("uploadFileDelta: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestUploadFileDelta_IdenticalFile(t *testing.T) {
 	eng := NewSyncEngine(mock)
 	info := LocalFileInfo{Path: localPath, Size: int64(len(data)), ModTime: time.Now()}
 
-	sent, saved, err := eng.uploadFileDelta(info, remotePath, false)
+	sent, saved, err := eng.uploadFileDelta(info, remotePath, false, false)
 	if err != nil {
 		t.Fatalf("uploadFileDelta: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestUploadFileDelta_ExecFailure(t *testing.T) {
 	eng := NewSyncEngine(mock)
 	info := LocalFileInfo{Path: localPath, Size: int64(len(data)), ModTime: time.Now()}
 
-	sent, saved, err := eng.uploadFileDelta(info, remotePath, false)
+	sent, saved, err := eng.uploadFileDelta(info, remotePath, false, false)
 	if err != nil {
 		t.Fatalf("uploadFileDelta should not error on fallback: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestUploadFileDelta_CorruptSignature(t *testing.T) {
 	eng := NewSyncEngine(mock)
 	info := LocalFileInfo{Path: localPath, Size: int64(len(data)), ModTime: time.Now()}
 
-	sent, saved, err := eng.uploadFileDelta(info, remotePath, false)
+	sent, saved, err := eng.uploadFileDelta(info, remotePath, false, false)
 	if err != nil {
 		t.Fatalf("should fallback on corrupt sig: %v", err)
 	}
@@ -632,7 +632,7 @@ func TestUploadFileDelta_SmallFileBoundary(t *testing.T) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				eng.uploadFileDelta(info, remotePath, false)
+				eng.uploadFileDelta(info, remotePath, false, false)
 			}()
 
 			select {

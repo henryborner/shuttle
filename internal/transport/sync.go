@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/fs"
@@ -21,6 +22,7 @@ type SyncOptions struct {
 	Exclude  []string
 	Protect  []string // protect patterns: matching remote paths are never overwritten/deleted / 保护模式：匹配远端路径绝不覆盖/删除
 	Checksum bool
+	Verify   bool // verify full-file hash after transfer / 传输后校验全文件哈希
 	DryRun   bool
 	ShowDots bool // show files/dirs starting with "." (default false) / 显示.开头的隐藏文件
 	Workers  int  // delta parallel workers; 0=default 4, 1=serial / delta并行数，0默认=4，1=串行
@@ -242,6 +244,7 @@ func (e *SyncEngine) deltaPhase(deltaJobs []deltaJob, opts SyncOptions, stats *S
 	resultCh := make(chan deltaResult, len(deltaJobs))
 
 	checksum := opts.Checksum
+	verify := opts.Verify
 	for _, dj := range deltaJobs {
 		go func(job deltaJob) {
 			sem <- struct{}{}
@@ -253,7 +256,7 @@ func (e *SyncEngine) deltaPhase(deltaJobs []deltaJob, opts SyncOptions, stats *S
 			}()
 			start := time.Now()
 			e.hook.OnFileStart(job.relPath, job.lf.Size)
-			sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum)
+			sent, saved, fe := e.uploadFileDelta(job.lf, job.remotePath, checksum, verify)
 			resultCh <- deltaResult{job, sent, saved, start, fe}
 		}(dj)
 	}
@@ -483,7 +486,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 // 用 goroutine 并行读取本地文件和远端签名，缩短流水线延迟。
 // 大文件使用 mmap 避免全量读入内存，mmap 失败时回退 ReadFile。
 // 若增量流程失败（远端无 shuttle 等），自动 fallback 全量上传。
-func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum bool) (sentBytes, savedBytes int64, err error) {
+func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, checksum, verify bool) (sentBytes, savedBytes int64, err error) {
 	algo := delta.GetDefault()
 	cmdStr := fmt.Sprintf("shuttle receive --algo '%s' '%s'", algo, strings.ReplaceAll(remotePath, "'", "'\\''"))
 	if checksum {
@@ -592,6 +595,26 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		return info.Size, 0, nil
 	}
 
+	// Verify trailer: after EOS, optionally send expected SHA256 of the new file.
+	if verify {
+		fileHash, hashErr := computeFileSHA256(info.Path)
+		if hashErr != nil {
+			e.warn("verify: cannot hash local file %s: %v", filepath.Base(info.Path), hashErr)
+		} else {
+			trailer := make([]byte, 1+32)
+			trailer[0] = 0x01 // verify flag
+			copy(trailer[1:], fileHash[:])
+			if _, err := wc.Write(trailer); err != nil {
+				cmd.Stdin.Close()
+				cmd.Close()
+				if fbErr := e.fallbackUpload(info, remotePath, "delta verify write failed"); fbErr != nil {
+					return info.Size, 0, fbErr
+				}
+				return info.Size, 0, nil
+			}
+		}
+	}
+
 	// Instructions already streamed to remote via the callback above.
 	// Close stdin to signal remote to start reconstruction, then Close()
 	// drains stderr, waits for the remote process, and releases the session.
@@ -632,6 +655,15 @@ func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason strin
 	}
 	e.warn("delta: %s (fell back to full upload for %s)", reason, filepath.Base(info.Path))
 	return nil
+}
+
+// computeFileSHA256 reads path and returns its SHA256 hash.
+func computeFileSHA256(path string) ([32]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(data), nil
 }
 
 // writeCounter wraps an io.Writer and counts bytes written.
