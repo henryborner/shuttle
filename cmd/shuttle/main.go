@@ -635,6 +635,7 @@ tasks:
       checksum: false        # false: 比大小+时间  true: 比文件内容哈希
       # verify: true         # 传输后校验 SHA256（可选，默认关闭）
       flat: false            # true: 不套源文件夹名，直接映射内容
+      show_dots: false       # true: 同步隐藏文件（.开头）
 
   # -- 示例2: 单文件同步（推送配置）--
   #   source 指向一个文件（非目录）→ 直接同步到 target 路径
