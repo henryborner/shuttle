@@ -13,6 +13,7 @@ import (
 
 	delta "github.com/henryborner/go-rsync"
 	"github.com/henryborner/shuttle/internal/config"
+	"github.com/henryborner/shuttle/internal/util"
 )
 
 type SyncOptions struct {
@@ -437,14 +438,15 @@ func resolveRelPath(source, filePath string, flat bool) string {
 }
 
 func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string, verify bool) error {
-	// Compute local hash before upload if verify enabled.
+	// Compute local hash before upload if verify enabled (use mmap).
 	var expected [32]byte
 	if verify {
-		data, err := os.ReadFile(info.Path)
+		data, closer, err := util.MmapReadOnly(info.Path)
 		if err != nil {
-			return fmt.Errorf("verify: read local file: %w", err)
+			return fmt.Errorf("verify: mmap local file: %w", err)
 		}
 		expected = sha256.Sum256(data)
+		closer()
 	}
 
 	// Ensure remote parent directory exists.
@@ -686,12 +688,14 @@ func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason strin
 	return nil
 }
 
-// computeFileSHA256 reads path and returns its SHA256 hash.
+// computeFileSHA256 opens path via mmap and returns its SHA256 hash.
+// Uses mmap to avoid loading the entire file into RAM.
 func computeFileSHA256(path string) ([32]byte, error) {
-	data, err := os.ReadFile(path)
+	data, closer, err := util.MmapReadOnly(path)
 	if err != nil {
 		return [32]byte{}, err
 	}
+	defer closer()
 	return sha256.Sum256(data), nil
 }
 
