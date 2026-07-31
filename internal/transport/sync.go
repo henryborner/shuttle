@@ -173,7 +173,7 @@ func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[str
 		if !exists {
 			var fe error
 			if !opts.DryRun {
-				fe = e.uploadFile(lf, remotePath)
+				fe = e.uploadFile(lf, remotePath, opts.Verify)
 			}
 			stats.NewFiles++
 			stats.SentBytes += lf.Size
@@ -190,7 +190,7 @@ func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[str
 			needUpd := lf.Size != rf.Size || !lf.ModTime.Truncate(time.Second).Equal(rf.ModTime.Truncate(time.Second))
 			if needUpd || opts.Checksum {
 				if opts.NoDelta && !opts.DryRun {
-					fe := e.uploadFile(lf, remotePath)
+					fe := e.uploadFile(lf, remotePath, opts.Verify)
 					stats.UpdatedFiles++
 					stats.SentBytes += lf.Size
 					e.hook.OnFileDone(FileEvent{
@@ -436,7 +436,17 @@ func resolveRelPath(source, filePath string, flat bool) string {
 	return rp
 }
 
-func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
+func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string, verify bool) error {
+	// Compute local hash before upload if verify enabled.
+	var expected [32]byte
+	if verify {
+		data, err := os.ReadFile(info.Path)
+		if err != nil {
+			return fmt.Errorf("verify: read local file: %w", err)
+		}
+		expected = sha256.Sum256(data)
+	}
+
 	// Ensure remote parent directory exists.
 	// 确保远程父目录存在。
 	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
@@ -453,6 +463,25 @@ func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string) error {
 	if err := e.transport.PutFile(remotePath, pr, info.Size); err != nil {
 		return err
 	}
+
+	// Verify remote file hash if requested.
+	if verify {
+		remoteReader, err := e.transport.GetFile(remotePath)
+		if err != nil {
+			return fmt.Errorf("verify: open remote file: %w", err)
+		}
+		defer remoteReader.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, remoteReader); err != nil {
+			return fmt.Errorf("verify: read remote file: %w", err)
+		}
+		var actual [32]byte
+		h.Sum(actual[:0])
+		if actual != expected {
+			return fmt.Errorf("verify failed: hash mismatch after full upload of %s", filepath.Base(info.Path))
+		}
+	}
+
 	// sync mtime to avoid false "changed" detection on next compare.
 	// 同步 mtime，避免下次比对时因上传时间≠本地修改时间而误判。
 	return e.transport.SetModTime(remotePath, info.ModTime)
@@ -495,7 +524,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	cmd, err := e.transport.Exec(cmdStr)
 	if err != nil {
 		// delta unavailable, fallback to full upload.
-		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable"); fbErr != nil {
+		if fbErr := e.fallbackUpload(info, remotePath, "agent unreachable", verify); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
 		return info.Size, 0, nil
@@ -509,7 +538,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		cmd.Stdin.Close()
 		cmd.Close()
-		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed"); fbErr != nil {
+		if fbErr := e.fallbackUpload(info, remotePath, "signature decode failed", verify); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
 		return info.Size, 0, nil
@@ -571,7 +600,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err != nil {
 		cmd.Stdin.Close()
 		cmd.Close()
-		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed"); fbErr != nil {
+		if fbErr := e.fallbackUpload(info, remotePath, "delta search failed", verify); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
 		return info.Size, 0, nil
@@ -580,7 +609,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if err := flushBatch(); err != nil {
 		cmd.Stdin.Close()
 		cmd.Close()
-		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed"); fbErr != nil {
+		if fbErr := e.fallbackUpload(info, remotePath, "delta encode failed", verify); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
 		return info.Size, 0, nil
@@ -589,7 +618,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 	if _, err := wc.Write([]byte{0, 0, 0, 0}); err != nil {
 		cmd.Stdin.Close()
 		cmd.Close()
-		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed"); fbErr != nil {
+		if fbErr := e.fallbackUpload(info, remotePath, "delta eos write failed", verify); fbErr != nil {
 			return info.Size, 0, fbErr
 		}
 		return info.Size, 0, nil
@@ -607,7 +636,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 			if _, err := wc.Write(trailer); err != nil {
 				cmd.Stdin.Close()
 				cmd.Close()
-				if fbErr := e.fallbackUpload(info, remotePath, "delta verify write failed"); fbErr != nil {
+				if fbErr := e.fallbackUpload(info, remotePath, "delta verify write failed", verify); fbErr != nil {
 					return info.Size, 0, fbErr
 				}
 				return info.Size, 0, nil
@@ -628,7 +657,7 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 		// Only fall back on actual errors, not non-fatal warnings (e.g. cache save).
 		// 仅对真正的错误做 fallback，忽略非致命警告（如缓存保存失败）。
 		if strings.Contains(errStr, "RECEIVER ERROR:") {
-			if fbErr := e.fallbackUpload(info, remotePath, "remote: "+errStr); fbErr != nil {
+			if fbErr := e.fallbackUpload(info, remotePath, "remote: "+errStr, verify); fbErr != nil {
 				return info.Size, 0, fbErr
 			}
 			return info.Size, 0, nil
@@ -649,8 +678,8 @@ func (e *SyncEngine) uploadFileDelta(info LocalFileInfo, remotePath string, chec
 // fallbackUpload attempts a full upload after delta fails.
 // If the full upload succeeds, it prints a warning to stderr and returns nil
 // (the file was synced, just not via delta). If it also fails, returns the error.
-func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason string) error {
-	if err := e.uploadFile(info, remotePath); err != nil {
+func (e *SyncEngine) fallbackUpload(info LocalFileInfo, remotePath, reason string, verify bool) error {
+	if err := e.uploadFile(info, remotePath, verify); err != nil {
 		return fmt.Errorf("delta fallback upload failed: %w", err)
 	}
 	e.warn("delta: %s (fell back to full upload for %s)", reason, filepath.Base(info.Path))
