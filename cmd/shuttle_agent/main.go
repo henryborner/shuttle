@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -70,19 +71,30 @@ func runReceive() {
 		os.Exit(1)
 	}
 	filePath := fs.Arg(0)
+	if err := receiveFile(filePath, os.Stdin, os.Stdout, *algo, *noCache); err != nil {
+		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: %v\n", err)
+		os.Exit(1)
+	}
+}
 
+// receiveFile performs the delta receive for one file: writes the block
+// signature to stdout, then reconstructs the new file from the instruction
+// stream on stdin into an atomic temp+rename. Split out of runReceive so the
+// reconstruction pipeline (including the buffered writer) is unit-testable.
+// receiveFile 对单个文件执行 delta receive：向 stdout 输出块签名，然后从
+// stdin 的指令流重建新文件（临时文件 + 原子 rename）。从 runReceive 拆分出来
+// 以便对重建流水线（含缓冲写入）做单元测试。
+func receiveFile(filePath string, stdin io.Reader, stdout io.Writer, algo string, noCache bool) error {
 	// 1. Open local old file (stream read signature).
 	f, err := os.Open(filePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 读取文件失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("读取文件失败: %w", err)
 	}
 	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: stat 失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("stat 失败: %w", err)
 	}
 	fileSize := fi.Size()
 
@@ -91,8 +103,8 @@ func runReceive() {
 	var sig *delta.Signature
 	var sigWire []byte
 
-	if !*noCache {
-		cached, _ := cacheLoad(filePath, fi, blockSize, *algo)
+	if !noCache {
+		cached, _ := cacheLoad(filePath, fi, blockSize, algo)
 		if cached != nil {
 			s, err := delta.WireDecodeSignature(bytes.NewReader(cached))
 			if err == nil {
@@ -103,36 +115,32 @@ func runReceive() {
 	}
 	if sig == nil {
 		var gsrErr error
-		sig, gsrErr = delta.GenerateSignatureReader(f, fileSize, blockSize, *algo)
+		sig, gsrErr = delta.GenerateSignatureReader(f, fileSize, blockSize, algo)
 		if gsrErr != nil {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: generate signature failed: %v\n", gsrErr)
-			os.Exit(1)
+			return fmt.Errorf("generate signature failed: %w", gsrErr)
 		}
 		var buf bytes.Buffer
 		if err := delta.WireEncodeSignature(&buf, sig); err != nil {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: encode signature failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("encode signature failed: %w", err)
 		}
 		sigWire = buf.Bytes()
-		if !*noCache {
-			if err := cacheSave(filePath, fi, blockSize, *algo, sigWire); err != nil {
+		if !noCache {
+			if err := cacheSave(filePath, fi, blockSize, algo, sigWire); err != nil {
 				fmt.Fprintf(os.Stderr, "RECEIVER WARNING: signature cache save failed: %v\n", err)
 			}
 		}
 	}
 
 	// 3. Send signature to stdout.
-	if _, err := os.Stdout.Write(sigWire); err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: send signature failed: %v\n", err)
-		os.Exit(1)
+	if _, err := stdout.Write(sigWire); err != nil {
+		return fmt.Errorf("send signature failed: %w", err)
 	}
 
 	// 4. Stream-read instructions from stdin → write directly to temp file.
 	tmpPath := filePath + ".shuttle_tmp"
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 创建临时文件失败: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
 	cleanup := func() {
 		out.Close()
@@ -145,55 +153,71 @@ func runReceive() {
 		}
 	}()
 
+	// Buffered writer: a delta with many small instructions (e.g. scattered
+	// literal chunks) would otherwise issue one syscall per instruction.
+	// Flush once after the instruction stream completes.
+	// 带缓冲写入：指令流含大量小块（如分散的 literal 片段）时，避免每条指令
+	// 一次系统调用。指令流结束后统一 flush 一次。
+	bw := bufio.NewWriterSize(out, 64<<10)
+
 	// 5. Read basis file for reconstruction (prefer mmap, fallback ReadFile).
 	oldData, closer, err := mmapReadOnly(filePath)
 	if err != nil {
 		oldData, err = os.ReadFile(filePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 读取文件失败: %v\n", err)
-			cleanup()
-			os.Exit(1)
+			return fmt.Errorf("读取文件失败: %w", err)
 		}
 	}
 	if closer != nil {
 		defer closer()
 	}
 
+	// The signature-read handle is no longer needed after mmap — close it so
+	// the final rename can replace the file on Windows (an open handle there
+	// causes "Access is denied"). Linux is unaffected but this is harmless.
+	// 签名读取用的句柄在 mmap 后不再需要——关闭它，否则 Windows 上 rename
+	// 覆盖仍被打开的句柄会报 "Access is denied"。Linux 不受影响，此举无害。
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close signature handle: %w", err)
+	}
+
 	blockLens := make([]int32, len(sig.BlockSums))
 	for i, bs := range sig.BlockSums {
 		blockLens[i] = bs.Length
 	}
-	recon, err := delta.NewReconstructor(oldData, blockSize, *algo, blockLens)
+	recon, err := delta.NewReconstructor(oldData, blockSize, algo, blockLens)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: create reconstructor failed: %v\n", err)
-		cleanup()
-		os.Exit(1)
+		return fmt.Errorf("create reconstructor failed: %w", err)
 	}
 
 	// Streaming pipeline: stdin → decode instructions → write output file.
-	err = delta.DecodeInstructionsStreamAll(os.Stdin, func(inst delta.MatchResult) error {
-		return recon.WriteInstruction(out, inst)
+	err = delta.DecodeInstructionsStreamAll(stdin, func(inst delta.MatchResult) error {
+		return recon.WriteInstruction(bw, inst)
 	})
 	if err != nil {
 		if isEOF(err) {
-			cleanup()
-			os.Exit(0)
+			// Sender closed stdin without an EOS marker — treat as "abandon":
+			// nothing is written, the temp file is removed by cleanup.
+			// 发送端未发 EOS 就关闭——视为放弃本次，临时文件由 cleanup 删除。
+			return nil
 		}
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 流式重建失败: %v\n", err)
-		cleanup()
-		os.Exit(1)
+		return fmt.Errorf("流式重建失败: %w", err)
+	}
+
+	// Flush buffered writes before verify/rename.
+	// 先 flush 缓冲，再校验/重命名。
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("flush 失败: %w", err)
 	}
 
 	// 5.5. Optional verify: sender may send a SHA256 trailer after EOS.
 	var expectedHash *[32]byte
 	{
 		flag := make([]byte, 1)
-		if n, _ := io.ReadFull(os.Stdin, flag); n == 1 && flag[0] == 0x01 {
+		if n, _ := io.ReadFull(stdin, flag); n == 1 && flag[0] == 0x01 {
 			var h [32]byte
-			if _, err := io.ReadFull(os.Stdin, h[:]); err != nil {
-				fmt.Fprintf(os.Stderr, "RECEIVER ERROR: read verify hash failed: %v\n", err)
-				cleanup()
-				os.Exit(1)
+			if _, err := io.ReadFull(stdin, h[:]); err != nil {
+				return fmt.Errorf("read verify hash failed: %w", err)
 			}
 			expectedHash = &h
 		}
@@ -201,32 +225,35 @@ func runReceive() {
 
 	// 6. Close output file, atomic rename.
 	if err := out.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 关闭临时文件失败: %v\n", err)
-		cleanup()
-		os.Exit(1)
+		return fmt.Errorf("关闭临时文件失败: %w", err)
 	}
 
 	if expectedHash != nil {
 		data, err := os.ReadFile(tmpPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 校验读取临时文件失败: %v\n", err)
-			cleanup()
-			os.Exit(1)
+			return fmt.Errorf("校验读取临时文件失败: %w", err)
 		}
 		actual := sha256.Sum256(data)
 		if actual != *expectedHash {
-			fmt.Fprintf(os.Stderr, "RECEIVER ERROR: verify failed — reconstructed file hash mismatch\n")
-			cleanup()
-			os.Exit(1)
+			return fmt.Errorf("verify failed — reconstructed file hash mismatch")
 		}
 	}
 
+	// Release the mmap view before rename: on Windows an active mapping
+	// would block replacing the file ("Access is denied"). Linux is
+	// unaffected; this is harmless there too.
+	// rename 前释放 mmap 视图：Windows 上活跃的映射会阻止替换文件
+	// （"Access is denied"）。Linux 不受影响，此举无害。
+	if closer != nil {
+		closer()
+		closer = nil
+	}
+
 	if err := os.Rename(tmpPath, filePath); err != nil {
-		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: 替换文件失败: %v\n", err)
-		cleanup()
-		os.Exit(1)
+		return fmt.Errorf("替换文件失败: %w", err)
 	}
 	succeeded = true
+	return nil
 }
 
 // ── signature cache ──
