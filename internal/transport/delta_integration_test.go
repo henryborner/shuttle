@@ -23,7 +23,11 @@ type mockTransport struct {
 	files      map[string][]byte // remote path → file content
 	execErrors bool              // if true, Exec() returns an error
 	corruptSig bool              // if true, Exec() writes corrupt signature data
-	modTime    time.Time         // if set, Stat() returns this ModTime
+	modTime    time.Time         // if set, Stat()/ListDir() return this ModTime
+
+	// test instrumentation / 测试插桩
+	listErr   error // if set, ListDirRecursive() returns it / 若设置，ListDirRecursive 返回该错误
+	statCalls int   // number of Stat() calls / Stat() 调用次数
 }
 
 func newMockTransport() *mockTransport {
@@ -54,6 +58,7 @@ func (m *mockTransport) GetFile(path string) (io.ReadCloser, error) {
 }
 
 func (m *mockTransport) Stat(path string) (FileInfo, error) {
+	m.statCalls++
 	data, ok := m.files[path]
 	if !ok {
 		return FileInfo{}, fmt.Errorf("file not found: %s", path)
@@ -71,11 +76,15 @@ func (m *mockTransport) Stat(path string) (FileInfo, error) {
 }
 
 func (m *mockTransport) ListDir(path string) ([]FileInfo, error) {
+	mt := time.Now()
+	if !m.modTime.IsZero() {
+		mt = m.modTime
+	}
 	var result []FileInfo
 	for p, data := range m.files {
 		if strings.HasPrefix(p, path) {
 			result = append(result, FileInfo{
-				Path: p, Size: int64(len(data)), ModTime: time.Now(),
+				Path: p, Size: int64(len(data)), ModTime: mt,
 			})
 		}
 	}
@@ -83,6 +92,9 @@ func (m *mockTransport) ListDir(path string) ([]FileInfo, error) {
 }
 
 func (m *mockTransport) ListDirRecursive(path string) ([]FileInfo, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
 	return m.ListDir(path)
 }
 

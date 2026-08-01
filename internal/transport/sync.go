@@ -16,6 +16,13 @@ import (
 	"github.com/henryborner/shuttle/internal/util"
 )
 
+// remoteScanThreshold: when the local tree has at least this many files,
+// prefer one recursive remote listing over per-file STAT round-trips (each
+// STAT is one SSH/SFTP RTT).
+// remoteScanThreshold: 本地文件数达到该阈值时，用一次递归远程列表代替逐文件
+// STAT 往返（每次 STAT 都是一次 SSH/SFTP RTT）。
+const remoteScanThreshold = 200
+
 type SyncOptions struct {
 	Source   string
 	Target   string
@@ -106,20 +113,40 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 		return nil, fmt.Errorf("safety: source contains no files and delete is enabled — refusing to wipe remote target; set delete:false or ensure source is not empty (check skipDots/exclude settings)")
 	}
 
-	// Full recursive scan only needed for --delete (to find orphan files).
-	// Without --delete, we Stat each remote file on demand — much faster.
+	// Full recursive scan is required for --delete (to find orphan files).
+	// Without --delete we used to Stat each remote file on demand — one
+	// SSH/SFTP round-trip per file. For large trees that cost dominates, so
+	// a single recursive listing is used instead (a few RTTs total). The
+	// listing is only trusted when complete: a truncated listing falls back
+	// to per-file Stat so existing files are never misjudged as new (which
+	// would trigger a full re-upload).
+	// 无 --delete 时原本对每个文件按需 Stat——每个文件一次 SSH/SFTP 往返。
+	// 对大目录树该开销占主导，因此改为一次递归列表（总共几个 RTT）。
+	// 仅当列表完整时才信任它：列表截断时回退逐文件 Stat，避免把已存在文件
+	// 误判为新文件导致整文件重传。
 	remoteFiles := make(map[string]FileInfo)
 	remoteScanned := false
-	if opts.Delete {
+	if opts.Delete || len(localFiles) >= remoteScanThreshold {
 		entries, listErr := e.transport.ListDirRecursive(opts.Target)
 		for _, f := range entries {
 			key := filepath.ToSlash(strings.TrimPrefix(f.Path, opts.Target))
 			key = strings.TrimLeft(key, "/")
 			remoteFiles[key] = f
 		}
-		remoteScanned = true
 		if listErr != nil {
-			e.warn("  [WARN] Remote listing incomplete on %s: %v\n    Delete pass skipped for unscanned directories.", opts.Target, listErr)
+			if opts.Delete {
+				// Partial listing still usable for the delete pass.
+				remoteScanned = true
+				e.warn("  [WARN] Remote listing incomplete on %s: %v\n    Delete pass skipped for unscanned directories.", opts.Target, listErr)
+			} else {
+				// Without --delete a truncated listing is not trustworthy:
+				// fall back to per-file Stat so nothing is misjudged as new.
+				// 无 --delete 时列表截断不可信，回退逐文件 Stat。
+				e.warn("  [WARN] Remote listing truncated on %s: %v\n    Falling back to per-file stat.", opts.Target, listErr)
+				remoteFiles = make(map[string]FileInfo)
+			}
+		} else {
+			remoteScanned = true
 		}
 	}
 	e.hook.OnSyncStart(filepath.Base(opts.Source), len(localFiles))
