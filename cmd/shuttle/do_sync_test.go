@@ -40,8 +40,8 @@ func TestStdoutIsTTYFalse(t *testing.T) {
 }
 
 // TestConsoleHook_NonTTY verifies that with isTTY=false no progress bar and no
-// line-clearing spaces are emitted — only the status line.
-// TestConsoleHook_NonTTY 验证 isTTY=false 时不输出进度条和清行空格，只输出状态行。
+// line-clearing sequences are emitted — only the status line.
+// TestConsoleHook_NonTTY 验证 isTTY=false 时不输出进度条和清行序列，只输出状态行。
 func TestConsoleHook_NonTTY(t *testing.T) {
 	h := &consoleHook{isTTY: false}
 	out := captureStdout(t, func() {
@@ -51,8 +51,8 @@ func TestConsoleHook_NonTTY(t *testing.T) {
 	if strings.Contains(out, "[====") {
 		t.Fatalf("progress bar leaked into piped output: %q", out)
 	}
-	if strings.Contains(out, strings.Repeat(" ", 80)) {
-		t.Fatalf("line-clear spaces leaked into piped output: %q", out)
+	if strings.Contains(out, "\x1b[K") {
+		t.Fatalf("line-clear sequence leaked into piped output: %q", out)
 	}
 	if !strings.Contains(out, "NEW") {
 		t.Fatalf("status line missing: %q", out)
@@ -60,8 +60,8 @@ func TestConsoleHook_NonTTY(t *testing.T) {
 }
 
 // TestConsoleHook_TTY verifies that with isTTY=true the progress bar is shown
-// and the line is cleared on completion.
-// TestConsoleHook_TTY 验证 isTTY=true 时显示进度条，完成后清行。
+// and the line is cleared on completion via ESC[K.
+// TestConsoleHook_TTY 验证 isTTY=true 时显示进度条，完成后用 ESC[K 清行。
 func TestConsoleHook_TTY(t *testing.T) {
 	h := &consoleHook{isTTY: true}
 	out := captureStdout(t, func() {
@@ -71,7 +71,7 @@ func TestConsoleHook_TTY(t *testing.T) {
 	if !strings.Contains(out, "50%") {
 		t.Fatalf("progress bar (50%%) not shown on TTY: %q", out)
 	}
-	if !strings.Contains(out, strings.Repeat(" ", 80)) {
-		t.Fatalf("line-clear sequence not emitted on TTY: %q", out)
+	if !strings.Contains(out, "\x1b[K") {
+		t.Fatalf("ESC[K line-clear sequence not emitted on TTY: %q", out)
 	}
 }

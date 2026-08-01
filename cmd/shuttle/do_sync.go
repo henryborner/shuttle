@@ -73,7 +73,12 @@ func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
 	if filled < barWidth {
 		bar += ">" + strings.Repeat(" ", barWidth-filled-1)
 	}
-	fmt.Printf("\r  %s  [%s] %d%%  %s/%s",
+	// \r\x1b[K: return to column 0 and clear to end of line, so a shorter
+	// frame never leaves stale characters behind (fixed-width space padding
+	// can't handle long paths or narrow terminals).
+	// \r\x1b[K：回到行首并清除到行尾，避免较短的帧残留上一帧的字符
+	//（固定宽度空格覆盖无法处理长路径或窄终端）。
+	fmt.Printf("\r\x1b[K  %s  [%s] %d%%  %s/%s",
 		util.Pad(filepath.Base(path), 24), bar, pct,
 		util.FormatBytes(sent), util.FormatBytes(total))
 }
@@ -84,11 +89,13 @@ func (h *consoleHook) OnFileDone(evt transport.FileEvent) error {
 	// transfers several bars share the line and a bool cannot track them
 	// (the first completion would clear it for the rest). Piped output never
 	// shows a bar, so nothing to clear there.
+	// \r\x1b[K clears to end of line regardless of width — far more reliable
+	// than a fixed 80-space overwrite.
 	// 在 TTY 下无条件清行：并行传输时多个进度条共用一行，布尔标志无法跟踪
 	// （第一个完成会把标志清掉，导致最后一个残留）。管道输出从不显示进度条，
-	// 无需清理。
+	// 无需清理。\r\x1b[K 清除到行尾，与行宽无关，比固定 80 空格覆盖可靠得多。
 	if h.isTTY {
-		fmt.Print("\r", strings.Repeat(" ", 80), "\r")
+		fmt.Print("\r\x1b[K")
 	}
 	switch {
 	case evt.IsNew:
