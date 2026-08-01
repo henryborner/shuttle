@@ -93,3 +93,40 @@ func TestRemoteScan_BelowThreshold(t *testing.T) {
 		t.Fatalf("NewFiles=%d want %d", stats.NewFiles, n)
 	}
 }
+
+// TestDeletePhaseParallel verifies the parallel orphan-deletion worker pool:
+// every orphan is removed, stats are exact, and kept files survive.
+// TestDeletePhaseParallel 验证并行孤儿删除：所有孤儿被删、统计精确、保留文件完好。
+func TestDeletePhaseParallel(t *testing.T) {
+	m := newMockTransport()
+	local := t.TempDir()
+	createFile(t, filepath.Join(local, "keep.txt"), "keep")
+
+	m.files["/remote/keep.txt"] = []byte("keep")
+	const orphans = 500
+	for i := 0; i < orphans; i++ {
+		m.files[fmt.Sprintf("/remote/orphan%04d.txt", i)] = []byte("x")
+	}
+
+	engine := NewSyncEngine(m)
+	stats, err := engine.Sync(SyncOptions{Source: local, Target: "/remote", Flat: true, Delete: true, Workers: 2})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if stats.DeletedFiles != orphans {
+		t.Fatalf("DeletedFiles=%d want %d", stats.DeletedFiles, orphans)
+	}
+	if len(stats.Errors) != 0 {
+		t.Fatalf("errors: %v", stats.Errors)
+	}
+	m.mu.Lock()
+	remaining := len(m.files)
+	_, keepOK := m.files["/remote/keep.txt"]
+	m.mu.Unlock()
+	if remaining != 1 {
+		t.Fatalf("remote has %d files after delete, want 1 (keep.txt)", remaining)
+	}
+	if !keepOK {
+		t.Fatal("keep.txt was deleted")
+	}
+}

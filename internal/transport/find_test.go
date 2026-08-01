@@ -52,11 +52,11 @@ func TestParseFindRecord_PathWithTab(t *testing.T) {
 
 func TestParseFindRecord_Malformed(t *testing.T) {
 	for _, rec := range [][]byte{
-		[]byte("F\t10"),          // too few fields
-		[]byte("F\tx\t1.0\t/p"),  // bad size
-		[]byte("F\t1\tabc\t/p"),  // bad mtime
-		[]byte("X\twhatever"),    // unknown type
-		[]byte("D"),              // dir without path
+		[]byte("F\t10"),         // too few fields
+		[]byte("F\tx\t1.0\t/p"), // bad size
+		[]byte("F\t1\tabc\t/p"), // bad mtime
+		[]byte("X\twhatever"),   // unknown type
+		[]byte("D"),             // dir without path
 		{},
 	} {
 		if _, err := parseFindRecord(rec); err == nil {

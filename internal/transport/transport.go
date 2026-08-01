@@ -308,8 +308,9 @@ func shellQuote(s string) string {
 // pruned, matching the walker's skipDirNames policy.
 //
 // Output records (NUL-terminated):
-//   F\t<size>\t<mtime epoch sec>\t<path>   file
-//   D\t<path>                              directory
+//
+//	F\t<size>\t<mtime epoch sec>\t<path>   file
+//	D\t<path>                              directory
 //
 // Returns an error on any failure (no find, no -printf support, parse
 // error) so the caller can fall back to the SFTP walker.
@@ -379,8 +380,9 @@ func parseFindStream(r io.Reader, fn func(FileInfo)) error {
 }
 
 // parseFindRecord decodes one NUL-stripped find record:
-//   F\t<size>\t<mtime epoch>\t<path>   (path may itself contain tabs)
-//   D\t<path>
+//
+//	F\t<size>\t<mtime epoch>\t<path>   (path may itself contain tabs)
+//	D\t<path>
 func parseFindRecord(rec []byte) (FileInfo, error) {
 	if len(rec) == 0 {
 		return FileInfo{}, fmt.Errorf("empty find record")

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	delta "github.com/henryborner/go-rsync"
@@ -333,25 +334,50 @@ func (e *SyncEngine) deletePhase(remoteFiles map[string]FileInfo, localFiles []L
 		}
 	}
 
-	// Delete orphan files.
-	for _, rf := range orphanFiles {
-		if !opts.DryRun {
-			if err := e.transport.Remove(rf.Path); err != nil {
-				if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
-					// File already gone — desired state achieved
-				} else {
-					stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
-					continue
+	// Delete orphan files. Deletion is a pure metadata operation (no bandwidth)
+	// but each Remove is one SSH/SFTP round-trip, so a serial loop would pile
+	// up RTTs for large orphan counts. A small worker pool flattens that.
+	// 并行删除孤立文件：删除是纯元数据操作（不占带宽），但每个 Remove 是一次
+	// SSH/SFTP 往返，串行会在巨量孤儿时累积 RTT。用小 worker pool 摊平。
+	const deleteWorkers = 8
+	if len(orphanFiles) > 0 {
+		jobs := make(chan FileInfo)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		for w := 0; w < deleteWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for rf := range jobs {
+					if !opts.DryRun {
+						if err := e.transport.Remove(rf.Path); err != nil {
+							if _, statErr := e.transport.Stat(rf.Path); statErr != nil {
+								// File already gone — desired state achieved
+							} else {
+								mu.Lock()
+								stats.Errors = append(stats.Errors, fmt.Errorf("delete %s: %w", rf.Path, err))
+								mu.Unlock()
+								continue
+							}
+						}
+					}
+					mu.Lock()
+					stats.DeletedFiles++
+					mu.Unlock()
+					relName := filepath.ToSlash(strings.TrimPrefix(rf.Path, opts.Target))
+					relName = strings.TrimPrefix(relName, "/")
+					e.hook.OnFileDone(FileEvent{
+						RelPath: relName, RemotePath: rf.Path,
+						FileSize: rf.Size, IsDeleted: true,
+					})
 				}
-			}
+			}()
 		}
-		stats.DeletedFiles++
-		relName := filepath.ToSlash(strings.TrimPrefix(rf.Path, opts.Target))
-		relName = strings.TrimPrefix(relName, "/")
-		e.hook.OnFileDone(FileEvent{
-			RelPath: relName, RemotePath: rf.Path,
-			FileSize: rf.Size, IsDeleted: true,
-		})
+		for _, rf := range orphanFiles {
+			jobs <- rf
+		}
+		close(jobs)
+		wg.Wait()
 	}
 
 	// Clean up empty directories (bottom-up by depth).

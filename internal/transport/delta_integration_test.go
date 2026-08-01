@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 // mockTransport implements Transport with an in-memory file store.
 // Exec() simulates a remote shuttle_agent receive process via io.Pipe.
 type mockTransport struct {
+	mu         sync.Mutex        // guards files + instrumentation / 保护 files 与插桩
 	files      map[string][]byte // remote path → file content
 	execErrors bool              // if true, Exec() returns an error
 	corruptSig bool              // if true, Exec() writes corrupt signature data
@@ -45,12 +47,16 @@ func (m *mockTransport) PutFile(path string, r io.Reader, size int64) error {
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
 	m.files[path] = data
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *mockTransport) GetFile(path string) (io.ReadCloser, error) {
+	m.mu.Lock()
 	data, ok := m.files[path]
+	m.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("file not found: %s", path)
 	}
@@ -58,6 +64,8 @@ func (m *mockTransport) GetFile(path string) (io.ReadCloser, error) {
 }
 
 func (m *mockTransport) Stat(path string) (FileInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.statCalls++
 	data, ok := m.files[path]
 	if !ok {
@@ -76,6 +84,8 @@ func (m *mockTransport) Stat(path string) (FileInfo, error) {
 }
 
 func (m *mockTransport) ListDir(path string) ([]FileInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	mt := time.Now()
 	if !m.modTime.IsZero() {
 		mt = m.modTime
@@ -92,18 +102,25 @@ func (m *mockTransport) ListDir(path string) ([]FileInfo, error) {
 }
 
 func (m *mockTransport) ListDirRecursive(path string) ([]FileInfo, error) {
-	if m.listErr != nil {
-		return nil, m.listErr
+	m.mu.Lock()
+	le := m.listErr
+	m.mu.Unlock()
+	if le != nil {
+		return nil, le
 	}
 	return m.ListDir(path)
 }
 
 func (m *mockTransport) Remove(path string) error {
+	m.mu.Lock()
 	delete(m.files, path)
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *mockTransport) RemoveRecursive(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for p := range m.files {
 		if strings.HasPrefix(p, path) {
 			delete(m.files, p)
@@ -134,8 +151,11 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 		defer stdoutW.Close()
 		defer stderrW.Close()
 
+		m.mu.Lock()
 		oldData, exists := m.files[remotePath]
-		if m.corruptSig {
+		corrupt := m.corruptSig
+		m.mu.Unlock()
+		if corrupt {
 			stdoutW.Write([]byte{0xFF, 0xFF, 0xFF, 0xFF})
 			return
 		}
@@ -169,14 +189,18 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 		// Read instructions: from --from-file path, or from stdin (legacy).
 		var instReader io.Reader = stdinR
 		if fromFile != "" {
+			m.mu.Lock()
 			data, ok := m.files[fromFile]
+			if ok {
+				// Clean up the temp file (simulates `rm -f`).
+				delete(m.files, fromFile)
+			}
+			m.mu.Unlock()
 			if !ok {
 				fmt.Fprintf(stderrW, "mock: --from-file not found: %s", fromFile)
 				return
 			}
 			instReader = bytes.NewReader(data)
-			// Clean up the temp file (simulates `rm -f`).
-			delete(m.files, fromFile)
 		}
 
 		// Reconstruct.
@@ -190,7 +214,9 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 				fmt.Fprintf(stderrW, "decode: %v", err)
 				return
 			}
+			m.mu.Lock()
 			m.files[remotePath] = result.Bytes()
+			m.mu.Unlock()
 		} else {
 			sig := delta.GenerateSignature(oldData, delta.CalculateBlockSize(int64(len(oldData))), delta.GetDefault())
 			blockLens := make([]int32, len(sig.BlockSums))
@@ -206,7 +232,9 @@ func (m *mockTransport) Exec(cmd string) (*RemoteCmd, error) {
 				fmt.Fprintf(stderrW, "decode: %v", err)
 				return
 			}
+			m.mu.Lock()
 			m.files[remotePath] = result.Bytes()
+			m.mu.Unlock()
 		}
 	}()
 
