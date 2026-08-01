@@ -31,7 +31,23 @@ var highRiskDryExts = map[string]string{
 type consoleHook struct {
 	mu           sync.Mutex
 	deletedFiles []string
-	hasProgress  bool // whether a progress bar was displayed / 是否显示过进度条
+	isTTY        bool // stdout is a terminal / stdout 是否为终端
+}
+
+// newConsoleHook creates a console hook, detecting whether stdout is a real
+// terminal. Progress bar and line-clearing sequences are only emitted on a
+// TTY; in piped output they would be printed literally and garble the log.
+// newConsoleHook 创建控制台 hook，检测 stdout 是否为真实终端。进度条与清行
+// 序列只在 TTY 下输出；管道输出下它们会被原样打印，污染日志。
+func newConsoleHook() *consoleHook {
+	return &consoleHook{isTTY: stdoutIsTTY()}
+}
+
+// stdoutIsTTY reports whether stdout is a character device (terminal).
+// stdoutIsTTY 判断 stdout 是否为字符设备（终端）。
+func stdoutIsTTY() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
 func (h *consoleHook) OnSyncStart(name string, total int) error {
@@ -40,19 +56,13 @@ func (h *consoleHook) OnSyncStart(name string, total int) error {
 	fmt.Printf("  %d files to check...\n", total)
 	return nil
 }
-func (h *consoleHook) OnFileStart(path string, size int64) error {
-	h.mu.Lock()
-	h.hasProgress = false
-	h.mu.Unlock()
-	return nil
-}
+func (h *consoleHook) OnFileStart(path string, size int64) error { return nil }
 func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
-	if total <= 0 {
+	if total <= 0 || !h.isTTY {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.hasProgress = true
 	pct := int(sent * 100 / total)
 	if pct > 100 {
 		pct = 100
@@ -70,14 +80,15 @@ func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
 func (h *consoleHook) OnFileDone(evt transport.FileEvent) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	// Clear the progress bar line only if one was actually displayed. In
-	// non-TTY/piped output this avoids spurious blank/space lines before
-	// every status line (the \r + 80 spaces are emitted literally).
-	// 仅在真正显示过进度条时才清行。非 TTY/管道输出下，\r + 80 空格会被原样
-	// 输出，造成每条状态行前出现多余的空行/空格行。
-	if h.hasProgress {
+	// Clear any progress bar on a TTY. Unconditional here: with parallel
+	// transfers several bars share the line and a bool cannot track them
+	// (the first completion would clear it for the rest). Piped output never
+	// shows a bar, so nothing to clear there.
+	// 在 TTY 下无条件清行：并行传输时多个进度条共用一行，布尔标志无法跟踪
+	// （第一个完成会把标志清掉，导致最后一个残留）。管道输出从不显示进度条，
+	// 无需清理。
+	if h.isTTY {
 		fmt.Print("\r", strings.Repeat(" ", 80), "\r")
-		h.hasProgress = false
 	}
 	switch {
 	case evt.IsNew:
@@ -275,7 +286,7 @@ func doSync(taskName, cfgPath string, dryRun, verbose bool, workers int, algoNam
 
 			// 同步
 			engine := transport.NewSyncEngine(sftp)
-			engine.SetHook(&consoleHook{})
+			engine.SetHook(newConsoleHook())
 			stats, err := engine.Sync(transport.SyncOptions{
 				Source:   task.Source,
 				Target:   remotePath,
@@ -429,7 +440,7 @@ func doAdHocSync(source, target string, delete, flat, checksum bool, exclude []s
 	}
 
 	engine := transport.NewSyncEngine(sftp)
-	engine.SetHook(&consoleHook{})
+	engine.SetHook(newConsoleHook())
 	stats, err := engine.Sync(transport.SyncOptions{
 		Source:   source,
 		Target:   remotePath,
