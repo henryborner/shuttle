@@ -79,12 +79,41 @@ type SyncEngine struct {
 	transport Transport
 	hook      SyncHook
 	warnings  []string // accumulated during Sync(), flushed to stats.Warnings
+
+	// dirsMade caches remote directories already created, so a large batch of
+	// new files in the same parent dirs doesn't issue one MkdirAll round-trip
+	// per file.
+	// dirsMade 缓存已创建的远程目录，避免同目录大量新文件时每个文件都做一次
+	// MkdirAll 往返。
+	dirsMu   sync.Mutex
+	dirsMade map[string]bool
 }
 
 // NewSyncEngine creates a sync engine backed by the given transport.
 // NewSyncEngine 基于指定传输层创建同步引擎。
 func NewSyncEngine(tr Transport) *SyncEngine {
-	return &SyncEngine{transport: tr, hook: NopHook{}}
+	return &SyncEngine{transport: tr, hook: NopHook{}, dirsMade: make(map[string]bool)}
+}
+
+// dirEnsure creates dir if needed, caching success so repeated parents are
+// only created once per sync. Concurrent-safe: MkdirAll is idempotent, so a
+// concurrent duplicate call (cache miss race) is harmless.
+// dirEnsure 按需创建目录，缓存成功结果：同一同步中重复的父目录只创建一次。
+// 并发安全：MkdirAll 幂等，缓存 miss 竞态导致的重复调用无害。
+func (e *SyncEngine) dirEnsure(dir string) error {
+	e.dirsMu.Lock()
+	if e.dirsMade[dir] {
+		e.dirsMu.Unlock()
+		return nil
+	}
+	e.dirsMu.Unlock()
+	if err := e.transport.MkdirAll(dir); err != nil {
+		return err
+	}
+	e.dirsMu.Lock()
+	e.dirsMade[dir] = true
+	e.dirsMu.Unlock()
+	return nil
 }
 
 // SetHook registers a sync event hook for progress reporting.
@@ -169,11 +198,29 @@ func (e *SyncEngine) Sync(opts SyncOptions) (*SyncStats, error) {
 }
 
 // uploadPhase uploads new files and collects delta jobs for existing files.
-// uploadPhase 上传新文件并收集已有文件的 delta 任务。
+// New files and --no-delta full re-uploads run in a bounded worker pool: full
+// uploads are bandwidth-heavy, so the pool is capped (default 4, like delta)
+// rather than unbounded.
+// uploadPhase 上传新文件并收集已有文件的 delta 任务。新文件与 --no-delta 全量
+// 重传在有界并发池中执行：全量上传吃带宽，池有上限（默认 4，与 delta 一致）。
 func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[string]FileInfo,
 	remoteScanned bool, opts SyncOptions, stats *SyncStats) []deltaJob {
 
+	type uploadJob struct {
+		lf         LocalFileInfo
+		relPath    string
+		remotePath string
+		isNew      bool
+	}
+	type uploadResult struct {
+		job   uploadJob
+		err   error
+		start time.Time
+	}
+
 	var deltaJobs []deltaJob
+	var uploadJobs []uploadJob
+
 	for _, lf := range localFiles {
 		relPath := resolveRelPath(opts.Source, lf.Path, opts.Flat)
 		remotePath := filepath.ToSlash(filepath.Join(opts.Target, relPath))
@@ -200,37 +247,26 @@ func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[str
 		e.hook.OnFileStart(relPath, lf.Size)
 
 		if !exists {
-			var fe error
-			if !opts.DryRun {
-				fe = e.uploadFile(lf, remotePath, opts.Verify)
-			}
-			stats.NewFiles++
-			stats.SentBytes += lf.Size
-			e.hook.OnFileDone(FileEvent{
-				RelPath: relPath, RemotePath: remotePath,
-				FileSize: lf.Size, BytesSent: lf.Size,
-				IsNew: true, Error: fe,
-				StartTime: start, Duration: time.Since(start),
-			})
-			if fe != nil {
-				stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", relPath, fe))
+			if opts.DryRun {
+				stats.NewFiles++
+				stats.SentBytes += lf.Size
+				e.hook.OnFileDone(FileEvent{
+					RelPath: relPath, RemotePath: remotePath,
+					FileSize: lf.Size, BytesSent: lf.Size,
+					IsNew: true, StartTime: start, Duration: time.Since(start),
+				})
+			} else {
+				// Deferred to the parallel upload pool below.
+				// 交给下面的并行上传池。
+				uploadJobs = append(uploadJobs, uploadJob{lf, relPath, remotePath, true})
 			}
 		} else {
 			needUpd := lf.Size != rf.Size || !lf.ModTime.Truncate(time.Second).Equal(rf.ModTime.Truncate(time.Second))
 			if needUpd || opts.Checksum {
 				if opts.NoDelta && !opts.DryRun {
-					fe := e.uploadFile(lf, remotePath, opts.Verify)
-					stats.UpdatedFiles++
-					stats.SentBytes += lf.Size
-					e.hook.OnFileDone(FileEvent{
-						RelPath: relPath, RemotePath: remotePath,
-						FileSize: lf.Size, BytesSent: lf.Size,
-						IsUpdated: true, Error: fe,
-						StartTime: start, Duration: time.Since(start),
-					})
-					if fe != nil {
-						stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", relPath, fe))
-					}
+					// Full re-upload also goes through the parallel pool.
+					// 全量重传同样走并行池。
+					uploadJobs = append(uploadJobs, uploadJob{lf, relPath, remotePath, false})
 				} else {
 					deltaJobs = append(deltaJobs, deltaJob{lf, relPath, remotePath})
 				}
@@ -245,6 +281,53 @@ func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[str
 		stats.TotalFiles++
 		stats.TotalBytes += lf.Size
 	}
+
+	// Parallel full uploads (new files + --no-delta updates).
+	if len(uploadJobs) > 0 {
+		workers := opts.Workers
+		if workers <= 0 {
+			workers = config.DefaultWorkers
+		}
+		resultCh := make(chan uploadResult, len(uploadJobs))
+		sem := make(chan struct{}, workers)
+		verify := opts.Verify
+		for _, j := range uploadJobs {
+			go func(j uploadJob) {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				start := time.Now()
+				var err error
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							err = fmt.Errorf("upload panic: %v", r)
+					}
+				}()
+				err = e.uploadFile(j.lf, j.remotePath, verify)
+			}()
+				resultCh <- uploadResult{j, err, start}
+			}(j)
+		}
+		for range uploadJobs {
+			r := <-resultCh
+			if r.job.isNew {
+				stats.NewFiles++
+			} else {
+				stats.UpdatedFiles++
+			}
+			stats.SentBytes += r.job.lf.Size
+			e.hook.OnFileDone(FileEvent{
+				RelPath: r.job.relPath, RemotePath: r.job.remotePath,
+				FileSize: r.job.lf.Size, BytesSent: r.job.lf.Size,
+				IsNew: r.job.isNew, IsUpdated: !r.job.isNew,
+				Error: r.err, StartTime: r.start, Duration: time.Since(r.start),
+			})
+			if r.err != nil {
+				stats.Errors = append(stats.Errors, fmt.Errorf("%s: %w", r.job.relPath, r.err))
+			}
+		}
+	}
+
 	return deltaJobs
 }
 
@@ -502,10 +585,13 @@ func (e *SyncEngine) uploadFile(info LocalFileInfo, remotePath string, verify bo
 		closer()
 	}
 
-	// Ensure remote parent directory exists.
-	// 确保远程父目录存在。
+	// Ensure remote parent directory exists (cached, so repeated parents in a
+	// large batch only cost one MkdirAll each).
+	// 确保远程父目录存在（带缓存，大批量中重复父目录只需一次 MkdirAll）。
 	if dir := filepath.ToSlash(filepath.Dir(remotePath)); dir != "." && dir != "/" {
-		e.transport.MkdirAll(dir)
+		if err := e.dirEnsure(dir); err != nil {
+			return fmt.Errorf("create directory %s: %w", dir, err)
+		}
 	}
 	f, err := os.Open(info.Path)
 	if err != nil {

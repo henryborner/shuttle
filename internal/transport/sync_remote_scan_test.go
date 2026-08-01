@@ -130,3 +130,54 @@ func TestDeletePhaseParallel(t *testing.T) {
 		t.Fatal("keep.txt was deleted")
 	}
 }
+
+// TestUploadPhaseParallelNewFiles verifies the bounded parallel upload pool
+// for new files, plus MkdirAll deduplication: many files sharing a few parent
+// dirs must not issue one MkdirAll round-trip per file.
+// TestUploadPhaseParallelNewFiles 验证新文件有界并发上传池与 MkdirAll 去重：
+// 大量文件共享少量父目录时，不应每个文件都做一次 MkdirAll 往返。
+func TestUploadPhaseParallelNewFiles(t *testing.T) {
+	m := newMockTransport()
+	local := t.TempDir()
+	const flat = 300
+	for i := 0; i < flat; i++ {
+		createFile(t, filepath.Join(local, fmt.Sprintf("f%03d.txt", i)), "content")
+	}
+	const subDirs = 20
+	for i := 0; i < subDirs; i++ {
+		dir := filepath.Join(local, fmt.Sprintf("sub%02d", i))
+		createDir(t, dir)
+		createFile(t, filepath.Join(dir, "x.txt"), "x")
+	}
+
+	engine := NewSyncEngine(m)
+	stats, err := engine.Sync(SyncOptions{Source: local, Target: "/remote", Flat: true, Workers: 4})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	want := flat + subDirs
+	if stats.NewFiles != want {
+		t.Fatalf("NewFiles=%d want %d", stats.NewFiles, want)
+	}
+	if len(stats.Errors) != 0 {
+		t.Fatalf("errors: %v", stats.Errors)
+	}
+	// MkdirAll must be deduplicated: root + subDirs unique parents, with at
+	// most a small race factor from concurrent workers. Far below per-file.
+	m.mu.Lock()
+	mk := m.mkdirCalls
+	m.mu.Unlock()
+	if mk > 4*(1+subDirs) {
+		t.Fatalf("MkdirAll calls=%d, want <= %d (deduplicated)", mk, 4*(1+subDirs))
+	}
+	if mk == 0 {
+		t.Fatal("expected at least one MkdirAll call")
+	}
+	// All files must exist on the remote.
+	m.mu.Lock()
+	got := len(m.files)
+	m.mu.Unlock()
+	if got != want {
+		t.Fatalf("remote files=%d want %d", got, want)
+	}
+}

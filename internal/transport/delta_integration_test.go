@@ -28,8 +28,9 @@ type mockTransport struct {
 	modTime    time.Time         // if set, Stat()/ListDir() return this ModTime
 
 	// test instrumentation / 测试插桩
-	listErr   error // if set, ListDirRecursive() returns it / 若设置，ListDirRecursive 返回该错误
-	statCalls int   // number of Stat() calls / Stat() 调用次数
+	listErr     error // if set, ListDirRecursive() returns it / 若设置，ListDirRecursive 返回该错误
+	statCalls   int   // number of Stat() calls / Stat() 调用次数
+	mkdirCalls  int   // number of MkdirAll() calls / MkdirAll() 调用次数
 }
 
 func newMockTransport() *mockTransport {
@@ -38,7 +39,12 @@ func newMockTransport() *mockTransport {
 
 func (m *mockTransport) Connect() error                            { return nil }
 func (m *mockTransport) Close() error                              { return nil }
-func (m *mockTransport) MkdirAll(path string) error                { return nil }
+func (m *mockTransport) MkdirAll(path string) error {
+	m.mu.Lock()
+	m.mkdirCalls++
+	m.mu.Unlock()
+	return nil
+}
 func (m *mockTransport) SetModTime(path string, t time.Time) error { return nil }
 func (m *mockTransport) RemoveDirectory(path string) error         { return nil }
 
