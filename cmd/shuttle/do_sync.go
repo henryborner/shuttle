@@ -70,10 +70,15 @@ func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
 func (h *consoleHook) OnFileDone(evt transport.FileEvent) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	// Clear the progress bar line (80 cols covers the max ~77-char bar).
-	// Mutex guarantees no other goroutine writes between clear and status.
-	// 清除进度条行（80列覆盖最长~77字符的进度条），mutex 保证原子性。
-	fmt.Print("\r", strings.Repeat(" ", 80), "\r")
+	// Clear the progress bar line only if one was actually displayed. In
+	// non-TTY/piped output this avoids spurious blank/space lines before
+	// every status line (the \r + 80 spaces are emitted literally).
+	// 仅在真正显示过进度条时才清行。非 TTY/管道输出下，\r + 80 空格会被原样
+	// 输出，造成每条状态行前出现多余的空行/空格行。
+	if h.hasProgress {
+		fmt.Print("\r", strings.Repeat(" ", 80), "\r")
+		h.hasProgress = false
+	}
 	switch {
 	case evt.IsNew:
 		fmt.Printf("  %s  %s\n", util.Pad("NEW", 5), evt.RelPath)
