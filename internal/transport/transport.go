@@ -2,10 +2,13 @@
 package transport
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -259,17 +262,163 @@ func (t *SFTPTransport) ListDir(path string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// skipDirs lists directory base names to skip during recursive walk.
+// skipDirNames lists directory base names to skip during recursive listing.
 // Only applied at the first level under the target root to avoid hiding
 // user project directories with the same names (e.g. dev/, run/).
-// skipDirs 递归遍历时跳过的系统目录名（仅作用于同步目标根目录下的第一层）。
-var skipDirs = map[string]bool{
-	"proc": true, "sys": true, "dev": true, "run": true,
-	"snap": true, "lost+found": true,
+// skipDirNames 递归列表时跳过的系统目录名（仅作用于同步目标根目录下的第一层）。
+var skipDirNames = []string{"proc", "sys", "dev", "run", "snap", "lost+found"}
+
+// skipDirs is skipDirNames as a lookup set for the SFTP walker.
+var skipDirs = func() map[string]bool {
+	m := make(map[string]bool, len(skipDirNames))
+	for _, d := range skipDirNames {
+		m[d] = true
+	}
+	return m
+}()
+
+// ListDirRecursive recursively lists all files and dirs under root, skipping
+// first-level system dirs. Prefers a single SSH `find` call (one round-trip,
+// no entry cap, no per-directory READDIR round-trips) and falls back to the
+// SFTP walker on any failure (e.g. a find without -printf support).
+// ListDirRecursive 递归列出 root 下所有文件和目录，跳过第一层系统目录。
+// 优先用一次 SSH find（1 次往返、无条目上限、无逐目录 READDIR 往返），
+// 任何失败（如服务器 find 不支持 -printf）回退 SFTP walker。
+func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
+	if t.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if entries, err := t.listViaFind(root); err == nil {
+		return entries, nil
+	} else {
+		fmt.Fprintf(os.Stderr, "  [WARN] Remote find listing failed on %s: %v\n    Falling back to SFTP walk.\n", root, err)
+	}
+	return t.listViaWalk(root)
 }
 
-// ListDirRecursive recursively lists all files and dirs under root, skipping system dirs.
-func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
+// shellQuote single-quotes s for safe use in a remote shell command.
+// shellQuote 对字符串做单引号转义，用于远程 shell 命令。
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// listViaFind lists the remote tree with a single SSH `find` invocation
+// (one round-trip total). Entries are NUL-delimited so paths containing
+// spaces, tabs or newlines are safe. First-level system directories are
+// pruned, matching the walker's skipDirNames policy.
+//
+// Output records (NUL-terminated):
+//   F\t<size>\t<mtime epoch sec>\t<path>   file
+//   D\t<path>                              directory
+//
+// Returns an error on any failure (no find, no -printf support, parse
+// error) so the caller can fall back to the SFTP walker.
+// listViaFind 用一次 SSH find 列出整个远程树（总共 1 次往返）。条目以 NUL
+// 分隔，路径含空格/tab/换行也安全。跳过第一层系统目录（与 walker 一致）。
+func (t *SFTPTransport) listViaFind(root string) ([]FileInfo, error) {
+	if t.sshCli == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	rootSlash := strings.TrimRight(filepath.ToSlash(root), "/")
+	var prune []string
+	for _, d := range skipDirNames {
+		prune = append(prune, fmt.Sprintf("-path %s", shellQuote(rootSlash+"/"+d)))
+	}
+	cmdStr := fmt.Sprintf(
+		"find %s \\( %s \\) -prune -o \\( -type f -printf 'F\\t%%s\\t%%T@\\t%%p\\0' \\) -o \\( -type d -printf 'D\\t%%p\\0' \\) 2>/dev/null",
+		shellQuote(rootSlash), strings.Join(prune, " -o "))
+	cmd, err := t.Exec(cmdStr)
+	if err != nil {
+		return nil, fmt.Errorf("find exec: %w", err)
+	}
+	cmd.Stdin.Close()
+	var files []FileInfo
+	if err := parseFindStream(cmd.Stdout, func(fi FileInfo) {
+		files = append(files, fi)
+	}); err != nil {
+		cmd.Close()
+		return nil, fmt.Errorf("find parse: %w", err)
+	}
+	if err := cmd.Close(); err != nil {
+		return nil, fmt.Errorf("find exit: %w", err)
+	}
+	return files, nil
+}
+
+// parseFindStream reads NUL-delimited find records from r and calls fn for
+// each decoded FileInfo. Streams so very large listings never fill memory.
+// parseFindStream 从 r 读取 NUL 分隔的 find 记录，逐条回调 fn。流式处理，
+// 巨量列表不会撑爆内存。
+func parseFindStream(r io.Reader, fn func(FileInfo)) error {
+	br := bufio.NewReaderSize(r, 256<<10)
+	for {
+		rec, err := br.ReadBytes(0)
+		if len(rec) > 0 {
+			// ReadBytes includes the delimiter NUL only when one was found
+			// (err == nil); on EOF the final record has no trailing NUL.
+			// ReadBytes 仅在找到分隔符（err==nil）时包含 NUL；EOF 时最后
+			// 一条记录没有尾部 NUL，不能截。
+			if err == nil {
+				rec = rec[:len(rec)-1] // strip trailing NUL / 去掉尾部 NUL
+			}
+			if len(rec) > 0 {
+				fi, perr := parseFindRecord(rec)
+				if perr != nil {
+					return perr
+				}
+				fn(fi)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+// parseFindRecord decodes one NUL-stripped find record:
+//   F\t<size>\t<mtime epoch>\t<path>   (path may itself contain tabs)
+//   D\t<path>
+func parseFindRecord(rec []byte) (FileInfo, error) {
+	if len(rec) == 0 {
+		return FileInfo{}, fmt.Errorf("empty find record")
+	}
+	switch rec[0] {
+	case 'F':
+		parts := bytes.SplitN(rec, []byte{'\t'}, 4)
+		if len(parts) != 4 {
+			return FileInfo{}, fmt.Errorf("malformed find file record: %q", rec)
+		}
+		size, err := strconv.ParseInt(string(parts[1]), 10, 64)
+		if err != nil {
+			return FileInfo{}, fmt.Errorf("find file size %q: %w", parts[1], err)
+		}
+		sec, err := strconv.ParseFloat(string(parts[2]), 64)
+		if err != nil {
+			return FileInfo{}, fmt.Errorf("find file mtime %q: %w", parts[2], err)
+		}
+		return FileInfo{
+			Path:    string(parts[3]),
+			Size:    size,
+			ModTime: time.Unix(int64(sec), 0),
+		}, nil
+	case 'D':
+		parts := bytes.SplitN(rec, []byte{'\t'}, 2)
+		if len(parts) != 2 {
+			return FileInfo{}, fmt.Errorf("malformed find dir record: %q", rec)
+		}
+		return FileInfo{Path: string(parts[1]), IsDir: true}, nil
+	default:
+		return FileInfo{}, fmt.Errorf("unknown find record type %q", rec)
+	}
+}
+
+// listViaWalk lists the remote tree with the SFTP walker (per-directory
+// READDIR round-trips, capped at maxFiles entries).
+// listViaWalk 用 SFTP walker 列出远程树（逐目录 READDIR 往返，上限 maxFiles）。
+func (t *SFTPTransport) listViaWalk(root string) ([]FileInfo, error) {
 	if t.client == nil {
 		return nil, fmt.Errorf("not connected")
 	}
