@@ -290,6 +290,13 @@ func (t *SFTPTransport) ListDirRecursive(root string) ([]FileInfo, error) {
 	}
 	if entries, err := t.listViaFind(root); err == nil {
 		return entries, nil
+	} else if _, statErr := t.Stat(root); statErr != nil {
+		// Target root doesn't exist (typical first sync): nothing to list.
+		// Return empty instead of warning + walking — that would be noise
+		// for a normal empty-target state (find exits 1 with "No such file").
+		// 目标根目录不存在（常见于首次同步）：无可列内容。直接返回空，
+		// 不打 WARN 也不回退 walker，避免误导性告警。
+		return nil, nil
 	} else {
 		fmt.Fprintf(os.Stderr, "  [WARN] Remote find listing failed on %s: %v\n    Falling back to SFTP walk.\n", root, err)
 	}
