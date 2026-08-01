@@ -301,10 +301,10 @@ func (e *SyncEngine) uploadPhase(localFiles []LocalFileInfo, remoteFiles map[str
 					defer func() {
 						if r := recover(); r != nil {
 							err = fmt.Errorf("upload panic: %v", r)
-					}
+						}
+					}()
+					err = e.uploadFile(j.lf, j.remotePath, verify)
 				}()
-				err = e.uploadFile(j.lf, j.remotePath, verify)
-			}()
 				resultCh <- uploadResult{j, err, start}
 			}(j)
 		}
