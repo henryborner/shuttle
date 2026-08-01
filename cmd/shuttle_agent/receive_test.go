@@ -154,3 +154,56 @@ func TestReceiveFileAbandonOnEOF(t *testing.T) {
 		t.Fatal("temp file not cleaned up on abandoned receive")
 	}
 }
+
+// TestReceiveFileCacheDisabledDefault verifies the default (noCache=true)
+// skips the signature cache entirely: no cache directory is created.
+// TestReceiveFileCacheDisabledDefault 验证默认（noCache=true）完全不碰签名缓存：
+// 不创建缓存目录。
+func TestReceiveFileCacheDisabledDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("USERPROFILE", dir) // Windows
+	t.Setenv("HOME", dir)        // Unix
+
+	local := t.TempDir()
+	old := []byte("hello cache test hello cache test")
+	path := filepath.Join(local, "f.txt")
+	if err := os.WriteFile(path, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var sigOut bytes.Buffer
+	if err := receiveFile(path, bytes.NewReader(wireInstructions(t, old, []byte("hello cache test HELLO cache test"))), &sigOut, delta.GetDefault(), true); err != nil {
+		t.Fatalf("receiveFile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".shuttle_cache")); !os.IsNotExist(err) {
+		t.Fatal("cache dir should not exist when cache is disabled")
+	}
+}
+
+// TestReceiveFileCacheEnabled verifies noCache=false writes the cache entry.
+// TestReceiveFileCacheEnabled 验证 noCache=false 会写入缓存条目。
+func TestReceiveFileCacheEnabled(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("USERPROFILE", dir) // Windows
+	t.Setenv("HOME", dir)        // Unix
+
+	local := t.TempDir()
+	old := []byte("hello cache test hello cache test")
+	path := filepath.Join(local, "f.txt")
+	if err := os.WriteFile(path, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var sigOut bytes.Buffer
+	if err := receiveFile(path, bytes.NewReader(wireInstructions(t, old, []byte("hello cache test HELLO cache test"))), &sigOut, delta.GetDefault(), false); err != nil {
+		t.Fatalf("receiveFile: %v", err)
+	}
+	cacheDir := filepath.Join(dir, ".shuttle_cache")
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		t.Fatalf("cache dir not created: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected a cache entry to be written")
+	}
+}

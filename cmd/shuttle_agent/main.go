@@ -60,10 +60,20 @@ func runIdentify() {
 // ── receive command (copied from cmd/shuttle/receive.go, decoupled from cobra) ──
 
 func runReceive() {
-	// Parse flags manually: shuttle receive [--algo md5] [--no-cache] <filepath>
+	// Parse flags manually: shuttle receive [--algo md5] [--cache] [--no-cache] <filepath>
+	//
+	// The signature cache is DISABLED by default: single-client setups get
+	// ~0% hits because SetModTime rewrites the remote mtime on every sync and
+	// mtime is part of the cache key, so the key never matches the previous
+	// entry. Pass --cache to enable it (useful for multi-client servers where
+	// several clients sync the same remote files). --no-cache always wins.
+	// 签名缓存默认禁用：单客户端场景命中率≈0（每次同步 SetModTime 都会改写远程
+	// mtime，而 mtime 是缓存键的一部分，键永远对不上上次的条目）。多客户端共享
+	// 同一远程文件的场景可传 --cache 启用。--no-cache 始终优先（强制禁用）。
 	fs := flag.NewFlagSet("receive", flag.ExitOnError)
 	algo := fs.String("algo", "md5", "strong checksum algorithm")
-	noCache := fs.Bool("no-cache", false, "skip signature cache")
+	cache := fs.Bool("cache", false, "enable signature cache (default off)")
+	noCache := fs.Bool("no-cache", false, "skip signature cache (overrides --cache)")
 	fs.Parse(os.Args[2:])
 
 	if fs.NArg() < 1 {
@@ -71,7 +81,8 @@ func runReceive() {
 		os.Exit(1)
 	}
 	filePath := fs.Arg(0)
-	if err := receiveFile(filePath, os.Stdin, os.Stdout, *algo, *noCache); err != nil {
+	useCache := *cache && !*noCache
+	if err := receiveFile(filePath, os.Stdin, os.Stdout, *algo, !useCache); err != nil {
 		fmt.Fprintf(os.Stderr, "RECEIVER ERROR: %v\n", err)
 		os.Exit(1)
 	}
