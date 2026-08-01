@@ -335,6 +335,14 @@ func (t *SFTPTransport) listViaFind(root string) ([]FileInfo, error) {
 	cmd.Stdin.Close()
 	var files []FileInfo
 	if err := parseFindStream(cmd.Stdout, func(fi FileInfo) {
+		// Skip the root dir itself: find emits it as a D record. Without
+		// this it would be classified as an orphan dir, producing a bogus
+		// empty-path DEL event and even an attempt to remove the target root.
+		// 跳过根目录自身（find 会输出它的 D 记录）。否则它会被当作孤儿目录，
+		// 产生空路径的 DEL 事件，甚至尝试删除目标根目录。
+		if fi.Path == rootSlash || fi.Path == rootSlash+"/" {
+			return
+		}
 		files = append(files, fi)
 	}); err != nil {
 		cmd.Close()

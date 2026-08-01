@@ -557,6 +557,104 @@ func TestSync_DryRun(t *testing.T) {
 	}
 }
 
+// testHook records OnFileDone events for assertions.
+type testHook struct {
+	onDone func(FileEvent)
+}
+
+func (h *testHook) OnSyncStart(string, int) error       { return nil }
+func (h *testHook) OnFileStart(string, int64) error     { return nil }
+func (h *testHook) OnFileProgress(string, int64, int64) {}
+func (h *testHook) OnFileDone(ev FileEvent) error {
+	if h.onDone != nil {
+		h.onDone(ev)
+	}
+	return nil
+}
+func (h *testHook) OnSyncDone(*SyncStats) error { return nil }
+
+// TestSync_DryRunDeleteEvents verifies that --dry-run --delete still emits
+// IsDeleted events for orphan files, and leaves the remote untouched.
+// TestSync_DryRunDeleteEvents 验证 --dry-run --delete 仍会为孤儿文件发出
+// IsDeleted 事件，且不真正删除远程文件。
+func TestSync_DryRunDeleteEvents(t *testing.T) {
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "keep.txt"), "keep")
+
+	mock := newMockTransport()
+	mock.files["/remote/keep.txt"] = []byte("keep")
+	mock.files["/remote/orphan1.txt"] = []byte("x")
+	mock.files["/remote/orphan2.txt"] = []byte("x")
+
+	var mu sync.Mutex
+	var deleted []string
+	hook := &testHook{onDone: func(ev FileEvent) {
+		mu.Lock()
+		if ev.IsDeleted {
+			deleted = append(deleted, ev.RelPath)
+		}
+		mu.Unlock()
+	}}
+
+	engine := NewSyncEngine(mock)
+	engine.SetHook(hook)
+	stats, err := engine.Sync(SyncOptions{Source: dir, Target: "/remote", Flat: true, Delete: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("dry-run delete sync: %v", err)
+	}
+	if stats.DeletedFiles != 2 {
+		t.Fatalf("DeletedFiles=%d want 2", stats.DeletedFiles)
+	}
+	mu.Lock()
+	gotDeleted := len(deleted)
+	mu.Unlock()
+	if gotDeleted != 2 {
+		t.Fatalf("IsDeleted events=%d want 2", gotDeleted)
+	}
+	// Remote must be untouched in dry-run.
+	mock.mu.Lock()
+	_, o1 := mock.files["/remote/orphan1.txt"]
+	_, o2 := mock.files["/remote/orphan2.txt"]
+	mock.mu.Unlock()
+	if !o1 || !o2 {
+		t.Fatal("dry-run deleted remote orphans!")
+	}
+}
+
+// TestDeletePhase_SkipsRootDir verifies the empty-dir cleanup never emits a
+// bogus empty-path DEL for the target root — a regression the SSH find
+// listing introduced by emitting the root dir as a D record.
+// TestDeletePhase_SkipsRootDir 验证空目录清理不会为目标根目录发出空路径的
+// DEL（SSH find 列表输出根目录 D 记录引入的回归）。
+func TestDeletePhase_SkipsRootDir(t *testing.T) {
+	m := newMockTransport()
+	var delEvents []string
+	hook := &testHook{onDone: func(ev FileEvent) {
+		if ev.IsDeleted {
+			delEvents = append(delEvents, ev.RelPath)
+		}
+	}}
+	engine := NewSyncEngine(m)
+	engine.SetHook(hook)
+
+	stats := &SyncStats{}
+	remoteFiles := map[string]FileInfo{
+		// Root dir itself appears in the listing (as find emits it).
+		"":         {Path: "/remote", IsDir: true},
+		"keep.txt": {Path: "/remote/keep.txt", Size: 4},
+	}
+	localFiles := []LocalFileInfo{{Path: filepath.Join("E:\\tmp", "keep.txt"), Size: 4}}
+
+	engine.deletePhase(remoteFiles, localFiles,
+		SyncOptions{Source: "E:\\tmp", Target: "/remote", Flat: true, DryRun: true}, stats)
+
+	for _, p := range delEvents {
+		if p == "" {
+			t.Fatalf("empty-path DEL emitted for target root (must be skipped): %q", p)
+		}
+	}
+}
+
 // TestSync_EmptySourceDeleteSafety verifies the safety guard:
 // empty source + delete=true returns an error.
 func TestSync_EmptySourceDeleteSafety(t *testing.T) {

@@ -468,14 +468,19 @@ func (e *SyncEngine) deletePhase(remoteFiles map[string]FileInfo, localFiles []L
 		return strings.Count(emptyDirs[i].Path, "/") > strings.Count(emptyDirs[j].Path, "/")
 	})
 	for _, d := range emptyDirs {
+		relName := filepath.ToSlash(strings.TrimPrefix(d.Path, opts.Target))
+		relName = strings.TrimPrefix(relName, "/")
+		if relName == "" {
+			// Defensive: never attempt to remove the target root itself.
+			// 防御：绝不尝试删除目标根目录。
+			continue
+		}
 		if !opts.DryRun {
 			if err := e.transport.RemoveDirectory(d.Path); err != nil {
 				continue
 			}
 		}
 		stats.DeletedFiles++
-		relName := filepath.ToSlash(strings.TrimPrefix(d.Path, opts.Target))
-		relName = strings.TrimPrefix(relName, "/")
 		e.hook.OnFileDone(FileEvent{
 			RelPath: relName, RemotePath: d.Path,
 			FileSize: d.Size, IsDeleted: true,
