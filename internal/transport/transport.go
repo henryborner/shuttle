@@ -138,6 +138,8 @@ type SFTPTransport struct {
 	cfg    SFTPConfig
 	client *sftp.Client
 	sshCli *ssh.Client
+
+	stopKeepAlive func() // stops the SSH keepalive goroutine / 停止 SSH keepalive 协程
 }
 
 // NewSFTP creates a new SFTP transport
@@ -175,12 +177,20 @@ func (t *SFTPTransport) Connect() error {
 		return fmt.Errorf("SFTP init failed: %w", err)
 	}
 	t.client = sftpCli
+	// Keep the connection alive during long transfers and detect silent
+	// network drops promptly.
+	// 长传期间保持连接活跃，网络静默断开时能及时感知。
+	t.stopKeepAlive = util.StartKeepAlive(sshCli)
 
 	return nil
 }
 
 // Close closes the connection
 func (t *SFTPTransport) Close() error {
+	if t.stopKeepAlive != nil {
+		t.stopKeepAlive()
+		t.stopKeepAlive = nil
+	}
 	var errs []error
 	if t.client != nil {
 		if err := t.client.Close(); err != nil {

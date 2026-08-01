@@ -7,10 +7,63 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
+
+// SSHKeepAlive is the keepalive interval applied to long-lived SSH client
+// connections (see StartKeepAlive).
+// SSHKeepAlive 是长连接 SSH 客户端的 keepalive 间隔（见 StartKeepAlive）。
+const SSHKeepAlive = 30 * time.Second
+
+// StartKeepAlive launches a background goroutine that periodically sends SSH
+// keepalive requests (keepalive@openssh.com) until the returned stop function
+// is called or the connection dies. This keeps long transfers alive through
+// NAT idle timeouts and surfaces silent network drops (dropped VPN/WiFi)
+// promptly instead of hanging until the TCP timeout.
+//
+// Newer golang.org/x/crypto/ssh removed ClientConfig.KeepAlivePeriod, so the
+// keepalive must be sent manually via SendRequest.
+// StartKeepAlive 启动后台 goroutine 定期发送 SSH keepalive 请求，直到调用
+// 返回的 stop 函数或连接失败为止。它让长传穿越 NAT 空闲超时，并在网络静默
+// 断开（VPN/WiFi 掉线）时及时感知，而不是挂到 TCP 超时。
+// 新版 x/crypto/ssh 已移除 ClientConfig.KeepAlivePeriod，需用 SendRequest 手动发送。
+func StartKeepAlive(client *ssh.Client) func() {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(SSHKeepAlive)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				// wantReply=true forces an ACK from the server, so a dead
+				// connection surfaces as an error here right away.
+				if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+					return // connection is dead; stop trying
+				}
+			}
+		}
+	}()
+	return func() {
+		select {
+		case <-stop: // already stopped
+		default:
+			close(stop)
+		}
+		// Wait for the goroutine to exit, but never block Close() for long
+		// even if SendRequest is stuck on a dead connection.
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
 
 // standardKeyNames lists SSH private key names to try in ~/.ssh, in priority order.
 var standardKeyNames = []string{"id_ed25519", "id_rsa", "id_ecdsa"}
