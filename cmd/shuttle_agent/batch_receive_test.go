@@ -82,7 +82,10 @@ func makeOldNew(n int, seed byte) (old, newData []byte) {
 // TestReceiveBatchBasic: two files through one batch, both reconstructed.
 func TestReceiveBatchBasic(t *testing.T) {
 	dir := t.TempDir()
-	type fc struct{ name string; old, new []byte }
+	type fc struct {
+		name     string
+		old, new []byte
+	}
 	oldA, newA := makeOldNew(1000, 1)
 	oldB, newB := makeOldNew(300000, 9)
 	files := []fc{

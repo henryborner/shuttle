@@ -234,10 +234,10 @@ func (m *batchMockTransport) batchFile(path string, fr *testFrameReader, stdoutW
 
 // testFrameReader adds single-frame lookahead over the frame stream.
 type testFrameReader struct {
-	r     io.Reader
-	typ   byte
-	data  []byte
-	has   bool
+	r    io.Reader
+	typ  byte
+	data []byte
+	has  bool
 }
 
 func (f *testFrameReader) read() (byte, []byte, error) {

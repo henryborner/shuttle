@@ -366,10 +366,10 @@ func readFrame(r io.Reader) (byte, []byte, error) {
 // frameReader wraps a stream with single-frame lookahead so the instruction
 // reader can "unread" a frame that belongs to the next file.
 type frameReader struct {
-	r      io.Reader
-	typ    byte
+	r       io.Reader
+	typ     byte
 	payload []byte
-	has    bool
+	has     bool
 }
 
 func (fr *frameReader) read() (byte, []byte, error) {
