@@ -352,11 +352,26 @@ func (e *SyncEngine) deltaPhase(deltaJobs []deltaJob, opts SyncOptions, stats *S
 	if workers <= 0 {
 		workers = config.DefaultWorkers
 	}
-	sem := make(chan struct{}, workers)
-	resultCh := make(chan deltaResult, len(deltaJobs))
 
 	checksum := opts.Checksum
 	verify := opts.Verify
+
+	// Prefer the batch path (one exec reused across files) when the remote
+	// agent advertises the receive-batch capability; otherwise fall back to
+	// the legacy per-file receive.
+	if e.agentSupportsBatch() {
+		e.deltaPhaseBatch(deltaJobs, workers, checksum, verify, stats)
+		return
+	}
+	e.deltaPhaseLegacy(deltaJobs, workers, checksum, verify, stats)
+}
+
+// deltaPhaseLegacy runs delta transfers with goroutine-per-job and a semaphore
+// cap; each file opens its own `shuttle receive` exec.
+func (e *SyncEngine) deltaPhaseLegacy(deltaJobs []deltaJob, workers int, checksum, verify bool, stats *SyncStats) {
+	sem := make(chan struct{}, workers)
+	resultCh := make(chan deltaResult, len(deltaJobs))
+
 	for _, dj := range deltaJobs {
 		go func(job deltaJob) {
 			sem <- struct{}{}
