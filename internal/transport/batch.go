@@ -352,10 +352,17 @@ func (e *SyncEngine) deltaPhaseBatch(deltaJobs []deltaJob, workers int, checksum
 		jobs <- dj
 	}
 	close(jobs)
-	wg.Wait()
-	close(resultCh)
 
-	for r := range resultCh {
+	// Consume results as they arrive so status lines (OnFileDone) print
+	// immediately per file, matching deltaPhaseLegacy / uploadPhase. Waiting
+	// for all workers first (wg.Wait) would delay every status line until the
+	// batch finishes — progress bars finish but no "UPD/Δ file" line appears,
+	// and the next file's bar redraws on the same line.
+	// 边收边处理：每个文件完成立即输出状态行（与 legacy/uploadPhase 一致）。
+	// 若等全部 worker 完成再统一输出，进度条走完不会立即出现状态行，
+	// 下一个文件的进度条会在同一行继续刷新，直到全部完成才一次性输出。
+	for i := 0; i < len(deltaJobs); i++ {
+		r := <-resultCh
 		stats.UpdatedFiles++
 		stats.DeltaBytes += r.job.lf.Size
 		stats.SentBytes += r.sent
@@ -374,4 +381,8 @@ func (e *SyncEngine) deltaPhaseBatch(deltaJobs []deltaJob, workers int, checksum
 			stats.Errors = append(stats.Errors, r.err)
 		}
 	}
+	// Workers may still be finishing (closing their batch sessions); wait for
+	// them so the sessions are released before this phase returns.
+	// worker 可能仍在收尾（关闭 batch 会话），等待它们释放会话。
+	wg.Wait()
 }
