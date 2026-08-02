@@ -348,19 +348,26 @@ func (e *SyncEngine) deltaPhaseBatch(deltaJobs []deltaJob, workers int, checksum
 			worker()
 		}()
 	}
-	for _, dj := range deltaJobs {
-		jobs <- dj
-	}
-	close(jobs)
+	// Send jobs from a separate goroutine. If this (main) goroutine sent them
+	// synchronously, each send blocks until a worker accepts the job, so the
+	// consume loop below — and every OnFileDone — would only start once all
+	// jobs are handed out (roughly one file-duration before the last one
+	// finishes). That delays every status line to the end, exactly the bug
+	// reported on a TTY: bars finish but no "UPD/Δ file" line appears until
+	// the batch is nearly done.
+	// 发送放在独立 goroutine：若主 goroutine 同步发送，每个发送都要等 worker
+	// 接收，下方消费循环（含所有 OnFileDone）要等全部 job 派发完才开始——
+	// 状态行会被推迟到接近结束才一次性输出（TTY 上报的 bug）。
+	go func() {
+		for _, dj := range deltaJobs {
+			jobs <- dj
+		}
+		close(jobs)
+	}()
 
 	// Consume results as they arrive so status lines (OnFileDone) print
-	// immediately per file, matching deltaPhaseLegacy / uploadPhase. Waiting
-	// for all workers first (wg.Wait) would delay every status line until the
-	// batch finishes — progress bars finish but no "UPD/Δ file" line appears,
-	// and the next file's bar redraws on the same line.
+	// immediately per file, matching deltaPhaseLegacy / uploadPhase.
 	// 边收边处理：每个文件完成立即输出状态行（与 legacy/uploadPhase 一致）。
-	// 若等全部 worker 完成再统一输出，进度条走完不会立即出现状态行，
-	// 下一个文件的进度条会在同一行继续刷新，直到全部完成才一次性输出。
 	for i := 0; i < len(deltaJobs); i++ {
 		r := <-resultCh
 		stats.UpdatedFiles++

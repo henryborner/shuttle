@@ -26,6 +26,8 @@ type batchMockTransport struct {
 	batchCapable bool // identify advertises :receive-batch / identify 是否宣告批量能力
 	killAfter    int  // per-session: kill the batch session after N begin-file frames (0 = never)
 
+	perFileDelay time.Duration // simulate slow remote processing per file / 模拟每文件慢速远端处理
+
 	mu        sync.Mutex
 	execCmds  []string
 	processed map[string]int // remote path → transfer count (exactly-once 断言)
@@ -156,6 +158,9 @@ func (m *batchMockTransport) execBatch() (*RemoteCmd, error) {
 
 // batchFile reconstructs one file. Returns "" on success or an error message.
 func (m *batchMockTransport) batchFile(path string, fr *testFrameReader, stdoutW io.Writer, stderrW io.Writer) string {
+	if m.perFileDelay > 0 {
+		time.Sleep(m.perFileDelay)
+	}
 	m.mu.Lock()
 	oldData, exists := m.files[path]
 	m.mu.Unlock()
@@ -473,6 +478,68 @@ func TestAgentSupportsBatch(t *testing.T) {
 	eng2 := NewSyncEngine(legacy)
 	if eng2.agentSupportsBatch() {
 		t.Error("expected no batch support for a legacy identify string")
+	}
+}
+
+// stampHook records the timestamp + path of every OnFileDone for realtime
+// assertions.
+type stampHook struct {
+	mu   sync.Mutex
+	done []stampEntry
+}
+
+type stampEntry struct {
+	t time.Time
+	p string
+}
+
+func (h *stampHook) OnSyncStart(string, int) error       { return nil }
+func (h *stampHook) OnFileStart(string, int64) error     { return nil }
+func (h *stampHook) OnFileProgress(string, int64, int64) {}
+func (h *stampHook) OnFileDone(ev FileEvent) error {
+	h.mu.Lock()
+	h.done = append(h.done, stampEntry{time.Now(), ev.RelPath})
+	h.mu.Unlock()
+	return nil
+}
+func (h *stampHook) OnSyncDone(*SyncStats) error { return nil }
+
+// TestDeltaPhaseBatch_RealtimeStatus proves OnFileDone fires per completed
+// file (spread over time), not batched after all workers finish. With a slow
+// mock (80ms per file) and Workers=1, real-time delivery yields ~80ms gaps;
+// batched delivery would produce ~0ms gaps.
+// TestDeltaPhaseBatch_RealtimeStatus 验证 OnFileDone 随文件完成实时触发（时间
+// 戳分散），而非等全部 worker 完成后统一触发。慢速 mock（每文件 80ms）+
+// Workers=1 下，实时交付应有 ~80ms 间隔；统一交付则间隔 ~0ms。
+func TestDeltaPhaseBatch_RealtimeStatus(t *testing.T) {
+	mock := newBatchMockTransport()
+	mock.batchCapable = true
+	mock.perFileDelay = 80 * time.Millisecond
+	dir, names := buildSyncFixture(t, 5)
+	target := "/remote"
+	plantRemoteOld(mock, dir, target, names, 151)
+
+	hook := &stampHook{}
+	eng := NewSyncEngine(mock)
+	eng.SetHook(hook)
+
+	if _, err := eng.Sync(SyncOptions{Source: dir, Target: target, Flat: true, Workers: 1}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(hook.done) != len(names) {
+		t.Fatalf("expected %d OnFileDone, got %d", len(names), len(hook.done))
+	}
+	var prev time.Time
+	for i, e := range hook.done {
+		var dt time.Duration
+		if i > 0 {
+			dt = e.t.Sub(prev)
+		}
+		t.Logf("OnFileDone[%d] %s dt=%v", i, e.p, dt)
+		if i > 0 && dt < 40*time.Millisecond {
+			t.Errorf("OnFileDone[%d] (%s) arrived %v after previous — status lines batched, not real-time", i, e.p, dt)
+		}
+		prev = e.t
 	}
 }
 
