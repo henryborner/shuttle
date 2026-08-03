@@ -22,7 +22,7 @@ import (
 	delta "github.com/henryborner/go-rsync"
 )
 
-const Version = "0.1.5.22"
+const Version = "0.1.6.0"
 
 func main() {
 	if len(os.Args) < 2 {
