@@ -1,7 +1,11 @@
 // Package util provides shared utilities used across the shuttle codebase.
 package util
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mattn/go-runewidth"
+)
 
 // Version is the current Shuttle version string.
 // Version 当前 Shuttle 版本号。
@@ -40,6 +44,26 @@ func Pad(s string, width int) string {
 		return s
 	}
 	return s + spaces(width-len(s))
+}
+
+// Truncate truncates s so its terminal display width is at most width,
+// appending "..." when shortened. Width is measured in display columns (CJK
+// and other wide runes count as 2), not runes, so Chinese file names never
+// push the progress bar past the terminal width either.
+// Used to keep the progress bar within one terminal line (80 columns): an
+// over-long file name widens the bar past the terminal width, the terminal
+// soft-wraps, and the CR goes back to the wrapped (physical) line start, so
+// every frame appears on a new line instead of refreshing in place.
+// Truncate 将字符串截断到显示宽度至多 width 列，截断时追加省略号。宽度按终端
+// 显示列计算（CJK/全角字符算 2 列）而非字符数，保证中文文件名也不会把进度条
+// 撑过终端宽度。用于让进度条保持在一行内（80 列）：超长文件名会把进度条撑过
+// 终端宽度，终端自动折行后 CR 只能回到折行后的物理行行首，导致每帧都显示在
+// 新的一行而不是原地刷新。
+func Truncate(s string, width int) string {
+	if runewidth.StringWidth(s) <= width {
+		return s
+	}
+	return runewidth.Truncate(s, width, "...")
 }
 
 var spaceBuf = "                                " // 32 spaces

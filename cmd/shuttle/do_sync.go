@@ -78,8 +78,14 @@ func (h *consoleHook) OnFileProgress(path string, sent, total int64) {
 	// can't handle long paths or narrow terminals).
 	// \r\x1b[K：回到行首并清除到行尾，避免较短的帧残留上一帧的字符
 	//（固定宽度空格覆盖无法处理长路径或窄终端）。
+	// Truncate the base name to 24 runes: a long name (e.g. 30+ chars) pushes
+	// the bar past 80 columns, the terminal soft-wraps the line, and CR then
+	// only returns to the wrapped physical line start — every frame lands on
+	// a new line instead of refreshing in place.
+	// 文件名截断到 24 字符：超长文件名会把进度条撑过 80 列，终端自动折行后
+	// CR 只能回到折行后的物理行行首，每帧都落到新的一行而不是原地刷新。
 	fmt.Printf("\r\x1b[K  %s  [%s] %d%%  %s/%s",
-		util.Pad(filepath.Base(path), 24), bar, pct,
+		util.Pad(util.Truncate(filepath.Base(path), 24), 24), bar, pct,
 		util.FormatBytes(sent), util.FormatBytes(total))
 }
 func (h *consoleHook) OnFileDone(evt transport.FileEvent) error {
