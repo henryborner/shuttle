@@ -9,7 +9,7 @@ import (
 
 // Version is the current Shuttle version string.
 // Version 当前 Shuttle 版本号。
-const Version = "0.1.6.0"
+const Version = "0.1.6.1"
 
 // FormatBytes formats a byte count as a human-readable string using binary
 // prefixes (e.g. "1.5 MiB", base-1024).
